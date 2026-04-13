@@ -1,17 +1,15 @@
-import '@/styles/globals.css'
-import type { Metadata } from 'next'
+import type { Metadata } from "next";
+import "../styles/globals.css";
 
 export const metadata: Metadata = {
-  title: 'SolarHub',
-  description: 'Página oficial del Solar',
-}
+  title: "SolarHub",
+  description: "Comunidad solar con cromos coleccionables",
+};
 
-export default function RootLayout({children,}: {children: React.ReactNode}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" suppressHydrationWarning >
-      <body>
-        {children}
-      </body>
+    <html lang="es">
+      <body>{children}</body>
     </html>
-  )
+  );
 }

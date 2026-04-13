@@ -1,13 +1,11 @@
-import type { Metadata } from 'next'
+import type { Metadata } from 'next';
+import Album from './components/Album';
 
 export const metadata: Metadata = {
-  title: 'SolarHub - Cromos',
-}
+  title: 'Cromos | SolarHub',
+  description: 'Colección de cromos de la comunidad solar',
+};
 
 export default function CromosPage() {
-  return (
-    <div>
-      <h1>Vista de Cromos</h1>
-    </div>
-  );
+  return <Album />;
 }
