@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import "../styles/globals.css"
-import { Layout } from "@/components/Layout";
+import "../styles/globals.css";
 
 export const metadata: Metadata = {
   title: "SolarHub",
@@ -10,9 +9,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body>
-        <Layout>{children}</Layout>
-      </body>
+      <body>{children}</body>
     </html>
-  )
+  );
 }

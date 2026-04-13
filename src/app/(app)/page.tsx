@@ -1,5 +1,5 @@
 export default function HomePage() {
   return (
-    <h1>Hola muy buenas</h1>
+    <h1>Página de inicio de SolarHub</h1>
   );
 }

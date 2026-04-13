@@ -1,9 +1,5 @@
-'use client';
-
-import { useRouter } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
-import { StarBackground } from './StarBackground';
-import type { MenuItem } from '../types/navigation';
+import type { MenuItem } from '@/types/navigation';
 
 interface MobileMenuProps {
   menuItems: MenuItem[];
@@ -20,11 +16,9 @@ export const MobileMenu = ({
   onOpen,
   onClose,
 }: MobileMenuProps) => {
-  const router = useRouter();
-
   const handleNavigation = (href?: string) => {
     if (href) {
-      router.push(href);
+      window.location.href = href;
     }
     onClose();
   };
@@ -50,28 +44,32 @@ export const MobileMenu = ({
 
       {/* Fullscreen Menu */}
       <div
-        className={`md:hidden fixed inset-0 z-100 bg-black transition-transform duration-300 overflow-y-auto ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        className={`md:hidden fixed inset-0 z-[100] ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'} transition-opacity duration-300`}
       >
-        <StarBackground />
-
-        {/* Close button */}
-        <div className="relative z-10 flex justify-end p-6">
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+        <div className="fixed top-4 right-4 z-20">
           <button
             onClick={onClose}
-            className="text-white hover:text-gray-300 transition-colors p-2"
+            className="text-white hover:text-gray-300 transition-colors p-2 mt-2 mr-2 "
             aria-label="Cerrar menú"
           >
             <X size={32} />
           </button>
         </div>
+        <div
+          className={`relative z-10 h-full transition-transform duration-300 ${
+            isOpen ? 'overflow-y-auto translate-x-0' : 'overflow-y-hidden translate-x-full'
+          }`}
+        >
+
+
+
 
         {/* Menu items */}
         <div className="relative z-10 flex flex-col items-center justify-center min-h-[calc(100vh-100px)] gap-12 py-8">
-          {menuItems.map((item) => (
+          {menuItems.map((item, index) => (
             <button
-              key={item.label}
+              key={index}
               onClick={() => handleNavigation(item.href)}
               className="text-white hover:text-gray-300 transition-all duration-200 flex flex-col items-center gap-4 p-4"
               aria-label={item.label}
@@ -80,6 +78,7 @@ export const MobileMenu = ({
               <span className="text-2xl">{item.label}</span>
             </button>
           ))}
+        </div>
         </div>
       </div>
     </>
