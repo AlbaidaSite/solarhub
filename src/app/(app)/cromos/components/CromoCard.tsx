@@ -2,11 +2,10 @@
 
 import { useEffect, useRef } from "react"
 import Image from "next/image"
-import type { Cromo, User } from "@/types/cromo"
+import type { Cromo } from "@/types/cromo"
 
 interface CromoCardProps {
   cromo: Cromo;
-  user: User;
 }
 
 interface VanillaTiltNode extends HTMLDivElement {
@@ -32,8 +31,6 @@ export default function CromoCard({ cromo }: CromoCardProps) {
           perspective: 1200,
           scale: 1.03,
           speed: 300,
-          glare: true,
-          "max-glare": 0.2,
         })
       })
       .catch(() => {
@@ -47,10 +44,13 @@ export default function CromoCard({ cromo }: CromoCardProps) {
   }, [])
 
   return (
-    <div ref={tiltRef} className="group will-change-transform rounded-xl">
+    <div
+      ref={tiltRef}
+      className="group will-change-transform rounded-xl"
+    >
       <div
         className={
-          "relative w-full aspect-1642/2223 rounded-xl overflow-hidden bg-zinc-900 transition-all duration-300 group-hover:shadow-2xl group-hover:brightness-110"
+          "relative w-full aspect-1642/2223 rounded-xl overflow-hidden bg-zinc-900 transition-all duration-300 hover:shadow-[0_0_0_2px_#00051A,0_0_12px_#E0E7FF]"
         }
       >
         <Image
@@ -59,7 +59,7 @@ export default function CromoCard({ cromo }: CromoCardProps) {
           fill
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
           className={
-            "object-cover scale-[1.1] transition-opacity duration-300 group-hover:opacity-95"
+            "object-cover scale-[1.1] transition-opacity duration-300"
           }
           priority={false}
         />

@@ -7,7 +7,10 @@ const nextConfig: NextConfig = {
     }
   },
   images: {
-    remotePatterns: [new URL('https://i.imgur.com/**')],
+    remotePatterns: [
+      new URL('https://bwvfmsuklmtpakpmvxoz.supabase.co/storage/v1/object/public/**'),
+      new URL('https://cgfxwzdosgzvbaqxndlp.supabase.co/storage/v1/object/public/**'),
+    ],
   }
 };
 
