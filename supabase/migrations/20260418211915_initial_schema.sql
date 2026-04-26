@@ -46,7 +46,7 @@ CREATE TRIGGER trg_profile_updated
 
 CREATE TABLE credentials (
   user_id uuid PRIMARY KEY REFERENCES profile(id) ON DELETE CASCADE,
-  is_active boolean NOT NULL DEFAULT true,
+  is_active boolean NOT NULL DEFAULT false,
   is_staff boolean NOT NULL DEFAULT false,
   is_superuser boolean NOT NULL DEFAULT false,
   is_loukou boolean NOT NULL DEFAULT false,

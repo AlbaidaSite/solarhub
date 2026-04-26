@@ -41,7 +41,7 @@ export default function AppLayout({children,}: {children: ReactNode}) {
             <main 
                 key={pathname}
                 ref={mainRef}
-                className="relative z-10 h-full overflow-y-auto pt-32 px-8 flex flex-col">
+                className="relative z-10 h-full overflow-y-auto pt-32 px-3 flex flex-col">
                 
                 <div className="flex-1">
                     {children}
