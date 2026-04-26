@@ -1,11 +1,12 @@
 import CromoCard from './CromoCard';
-import { supabase } from '@/lib/supabase/client';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getStorageUrl } from '@/lib/supabase/storage';
 import type { CromoRow } from '@/types/cromo';
 
 const LOCKED_IMG_PATH = 'cromos/locked.webp';
 
 export default async function Album() {
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('cromo')
     .select(
@@ -42,7 +43,7 @@ export default async function Album() {
     });
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-6 p-4">
+    <div className="grid justify-center grid-cols-[repeat(auto-fill,minmax(130px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-6 p-4">
       {cromos.map((cromo) => (
         <CromoCard key={`${cromo.number}-${cromo.variant}`} cromo={cromo} />
       ))}

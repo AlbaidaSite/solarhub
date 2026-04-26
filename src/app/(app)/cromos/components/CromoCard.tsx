@@ -50,7 +50,7 @@ export default function CromoCard({ cromo }: CromoCardProps) {
     >
       <div
         className={
-          "relative w-full aspect-1642/2223 rounded-xl overflow-hidden bg-zinc-900 transition-all duration-300 hover:shadow-[0_0_0_2px_#00051A,0_0_12px_#E0E7FF]"
+          "relative w-full aspect-1642/2223 rounded-xl overflow-hidden bg-zinc-900 transition-all duration-300 hover:shadow-[0_0_0_2px_#343742,0_0_12px_#E0E7FF]"
         }
       >
         <Image

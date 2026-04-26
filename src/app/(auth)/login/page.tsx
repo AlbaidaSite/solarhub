@@ -1,13 +1,10 @@
-import type { Metadata } from 'next'
+import type { Metadata } from "next";
+import AuthView from "../components/AuthView";
 
 export const metadata: Metadata = {
-  title: 'SolarHub - Login',
-}
+  title: "SolarHub - Acceso",
+};
 
 export default function AuthPage() {
-  return( 
-    <div>
-      <h1>Vista de Login</h1>
-    </div>
-  );
+  return <AuthView />;
 }
