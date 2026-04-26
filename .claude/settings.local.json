@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm run:*)",
       "Bash(ls -la d:/Proyectos/TFG/trae/solarhub/.env*)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npx supabase *)"
     ]
   }
 }

@@ -1,13 +1,66 @@
-import type { Metadata } from 'next'
+import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Pencil } from "lucide-react";
+
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getStorageUrl } from "@/lib/supabase/storage";
+import ProfilePanels from "./components/ProfilePanels";
+
+const DEFAULT_AVATAR_PATH = "profiles/default_profile.webp";
 
 export const metadata: Metadata = {
-  title: 'SolarHub - Perfil',
-}
+  title: "SolarHub - Perfil",
+};
 
-export default function PerfilPage() {
+export default async function PerfilPage() {
+  const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profile")
+    .select("username, name, profile_img")
+    .eq("id", user.id)
+    .single();
+
+  const avatarUrl = getStorageUrl(profile?.profile_img || DEFAULT_AVATAR_PATH);
+
   return (
-    <div>
-      <h1>Vista de Perfil</h1>
+    <div className="relative w-full flex flex-col">
+      <Link
+        href="/perfil/editar"
+        aria-label="Editar perfil"
+        className="absolute top-0 right-0 inline-flex items-center gap-2 px-3 py-2 rounded-full text-white/70 hover:text-amber-300 hover:bg-white/5 transition-colors z-10"
+      >
+        <span className="hidden nav:block text-base font-bold">Editar</span>
+        <Pencil size={22} strokeWidth={2.5} />
+      </Link>
+
+      <header className="w-full flex flex-col items-center gap-4 mb-12">
+        <div className="relative w-32 h-32 rounded-full overflow-hidden border border-zinc-700">
+          <Image
+            src={avatarUrl}
+            alt={profile?.username ?? "avatar"}
+            fill
+            sizes="128px"
+            className="object-cover"
+            priority
+          />
+        </div>
+        <h1 className="text-4xl font-bold text-white text-center">
+          {profile?.username ?? "—"}
+        </h1>
+      </header>
+
+      <ProfilePanels />
     </div>
   );
 }

@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@theme {
+  /* Breakpoint propio para la transición navbar-desktop ↔ menú móvil.
+     Más bajo que `md` (650px) porque el navbar cabe holgado a partir de 700px. */
+  --breakpoint-nav: 650px;
+}
+
 @layer base {
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

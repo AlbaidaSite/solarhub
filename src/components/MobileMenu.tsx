@@ -27,7 +27,7 @@ export const MobileMenu = ({
     <>
       {/* Hamburger Button */}
       <div
-        className={`md:hidden fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ${
+        className={`nav:hidden fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ${
           isVisible ? 'translate-y-0' : '-translate-y-full'
         }`}
       >
@@ -44,7 +44,7 @@ export const MobileMenu = ({
 
       {/* Fullscreen Menu */}
       <div
-        className={`md:hidden fixed inset-0 z-[100] ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'} transition-opacity duration-300`}
+        className={`nav:hidden fixed inset-0 z-[100] ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'} transition-opacity duration-300`}
       >
         <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
         <div className="fixed top-4 right-4 z-20">
