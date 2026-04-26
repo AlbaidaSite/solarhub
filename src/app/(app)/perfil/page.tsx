@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { LogOut, Pencil } from "lucide-react";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStorageUrl } from "@/lib/supabase/storage";
 import ProfilePanels from "./components/ProfilePanels";
+import { logoutAction } from "./actions";
 
 const DEFAULT_AVATAR_PATH = "profiles/default_profile.webp";
 
@@ -35,6 +36,17 @@ export default async function PerfilPage() {
 
   return (
     <div className="relative w-full flex flex-col">
+      <form action={logoutAction} className="absolute top-0 left-0 z-10">
+        <button
+          type="submit"
+          aria-label="Cerrar sesión"
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-white/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
+        >
+          <LogOut size={22} strokeWidth={2.5} />
+          <span className="hidden nav:block text-base font-bold">Cerrar sesión</span>
+        </button>
+      </form>
+
       <Link
         href="/perfil/editar"
         aria-label="Editar perfil"
