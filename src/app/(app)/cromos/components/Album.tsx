@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getStorageUrl, getThumbUrl } from '@/lib/supabase/storage';
-import type { CromoDetail } from '@/types/cromo';
+import type { Category, CromoDetail, Rarity } from '@/types/cromo';
 import AlbumGrid from './AlbumGrid';
 
 const LOCKED_IMG_PATH = 'cromos/locked.webp';
@@ -17,31 +17,75 @@ interface CromoQueryRow {
   front_img: string;
   back_img: string;
   cromo_labels: { has_owners: boolean; hide_til_registered: boolean; for_loukou: boolean } | null;
-  rarity: { name: string; icon_path: string } | null;
-  category: { name: string; icon_path: string } | null;
+  rarity: { id: number; name: string; icon_path: string } | null;
+  category: { id: number; name: string; icon_path: string; order_number: number } | null;
   cromo_artist: Array<{ artist: { name: string; url: string | null } | null }>;
+}
+
+interface CategoryQueryRow {
+  id: number;
+  name: string;
+  icon_path: string;
+  order_number: number;
+}
+
+interface RarityQueryRow {
+  id: number;
+  name: string;
+  icon_path: string;
 }
 
 export default async function Album() {
   const supabase = await createSupabaseServerClient();
 
-  const { data, error } = await supabase
-    .from('cromo')
-    .select(
-      `id, name, number, variant, description, copies, how_to, how_to_extended, front_img, back_img,
-       cromo_labels:labels_id(has_owners, hide_til_registered, for_loukou),
-       rarity:rarity_id(name, icon_path),
-       category:category_id(name, icon_path),
-       cromo_artist(artist:artist_id(name, url))`
-    )
-    .order('number', { ascending: true })
-    .order('variant', { ascending: true });
+  const [cromosRes, categoriesRes, raritiesRes] = await Promise.all([
+    supabase
+      .from('cromo')
+      .select(
+        `id, name, number, variant, description, copies, how_to, how_to_extended, front_img, back_img,
+         cromo_labels:labels_id(has_owners, hide_til_registered, for_loukou),
+         rarity:rarity_id(id, name, icon_path),
+         category:category_id(id, name, icon_path, order_number),
+         cromo_artist(artist:artist_id(name, url))`
+      )
+      .order('number', { ascending: true })
+      .order('variant', { ascending: true }),
+    supabase
+      .from('category')
+      .select('id, name, icon_path, order_number')
+      .order('order_number', { ascending: true }),
+    supabase
+      .from('rarity')
+      .select('id, name, icon_path')
+      .order('id', { ascending: true }),
+  ]);
 
-  if (error) {
-    return <p className="p-4 text-red-500">Error cargando cromos: {error.message}</p>;
+  if (cromosRes.error) {
+    return <p className="p-4 text-red-500">Error cargando cromos: {cromosRes.error.message}</p>;
+  }
+  if (categoriesRes.error) {
+    return <p className="p-4 text-red-500">Error cargando categorías: {categoriesRes.error.message}</p>;
+  }
+  if (raritiesRes.error) {
+    return <p className="p-4 text-red-500">Error cargando rarezas: {raritiesRes.error.message}</p>;
   }
 
-  const rows = (data ?? []) as unknown as CromoQueryRow[];
+  const rows = (cromosRes.data ?? []) as unknown as CromoQueryRow[];
+  const categoryRows = (categoriesRes.data ?? []) as unknown as CategoryQueryRow[];
+  const rarityRows = (raritiesRes.data ?? []) as unknown as RarityQueryRow[];
+
+  const categories: Category[] = categoryRows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    icon_path: getStorageUrl(c.icon_path),
+    order_number: c.order_number,
+  }));
+
+  const rarities: Rarity[] = rarityRows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    icon_path: getStorageUrl(r.icon_path),
+  }));
 
   const cromos: CromoDetail[] = rows
     .filter((c) => {
@@ -71,10 +115,15 @@ export default async function Album() {
         front_thumb: getThumbUrl(realFrontPath),
         back_img: getStorageUrl(realBackPath),
         rarity: c.rarity
-          ? { name: c.rarity.name, icon_path: getStorageUrl(c.rarity.icon_path) }
+          ? { id: c.rarity.id, name: c.rarity.name, icon_path: getStorageUrl(c.rarity.icon_path) }
           : null,
         category: c.category
-          ? { name: c.category.name, icon_path: getStorageUrl(c.category.icon_path) }
+          ? {
+              id: c.category.id,
+              name: c.category.name,
+              icon_path: getStorageUrl(c.category.icon_path),
+              order_number: c.category.order_number,
+            }
           : null,
         artists: c.cromo_artist
           .map((ca) => ca.artist)
@@ -82,5 +131,5 @@ export default async function Album() {
       };
     });
 
-  return <AlbumGrid cromos={cromos} />;
+  return <AlbumGrid cromos={cromos} categories={categories} rarities={rarities} />;
 }
