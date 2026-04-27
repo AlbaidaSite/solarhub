@@ -27,14 +27,14 @@ export const MobileMenu = ({
     <>
       {/* Hamburger Button */}
       <div
-        className={`nav:hidden fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ${
+        className={`nav:hidden fixed top-0 left-0 right-0 z-50 pointer-events-none transition-transform duration-300 ${
           isVisible ? 'translate-y-0' : '-translate-y-full'
         }`}
       >
         <div className="flex justify-end items-center p-6">
           <button
             onClick={onOpen}
-            className="text-white hover:text-gray-300 transition-colors p-2"
+            className="text-white hover:text-gray-300 transition-colors p-2 pointer-events-auto"
             aria-label="Abrir menú"
           >
             <Menu size={32} />

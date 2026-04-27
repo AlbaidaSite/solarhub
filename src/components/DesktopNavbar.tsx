@@ -18,12 +18,12 @@ export const DesktopNavbar = ({ menuItems, isVisible }: DesktopNavbarProps) => {
 
   return (
     <nav
-      className={`hidden nav:block fixed top-0 left-0 right-0 z-50 transition-transform duration-500 ${
+      className={`hidden nav:block fixed top-0 left-0 right-0 z-50 pointer-events-none transition-transform duration-500 ${
         isVisible ? 'translate-y-0' : '-translate-y-full'
       }`}
     >
       {/* Single background container with blur and 84% opacity */}
-      <div className="mx-auto max-w-max bg-black/77 backdrop-blur-md rounded-lg px-4">
+      <div className="mx-auto max-w-max bg-black/77 backdrop-blur-md rounded-lg px-4 pointer-events-auto">
         <div className="flex justify-center items-center gap-12 py-6">
           {menuItems.map((item, index) => (
             
