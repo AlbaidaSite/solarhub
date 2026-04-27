@@ -56,4 +56,24 @@
     justify-content: center;
     align-items: center;
   }
+
+  /* Scrollbar fina y blanca, sin fondo. Reutilizable. */
+  .scrollbar-clean {
+    scrollbar-color: rgba(255, 255, 255, 0.5) transparent;
+    scrollbar-width: thin;
+  }
+  .scrollbar-clean::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-clean::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-clean::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.5);
+    border-radius: 3px;
+  }
+  .scrollbar-clean::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.85);
+  }
 }
