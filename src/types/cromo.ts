@@ -16,6 +16,21 @@ export interface CromoRow extends Cromo {
   cromo_labels: CromoLabels | null;
 }
 
+export interface Category {
+  id: number;
+  name: string;
+  icon_path: string;       // URL resuelta
+  order_number: number;
+}
+
+export interface Rarity {
+  id: number;
+  name: string;
+  icon_path: string;       // URL resuelta
+}
+
+export type SortBy = 'number' | 'rarity_desc' | 'rarity_asc' | 'name';
+
 export interface CromoDetail {
   id: number;
   name: string;
@@ -29,8 +44,8 @@ export interface CromoDetail {
   front_thumb: string;     // URL resuelta (thumbnail ~400px)
   back_img: string;        // URL resuelta (full)
   isLocked: boolean;
-  rarity: { name: string; icon_path: string } | null;       // icon_path resuelto
-  category: { name: string; icon_path: string } | null;     // icon_path resuelto
+  rarity: { id: number; name: string; icon_path: string } | null;
+  category: { id: number; name: string; icon_path: string; order_number: number } | null;
   artists: Array<{ name: string; url: string | null }>;
 }
 
