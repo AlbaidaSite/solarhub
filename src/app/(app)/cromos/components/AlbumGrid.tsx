@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import AlbumFilters from "./AlbumFilters";
 import CromoCard from "./CromoCard";
-import CromoModal from "./CromoModal";
+import { buildIdSlug } from "../lib/slug";
 import type { Category, CromoDetail, Rarity, SortBy } from "@/types/cromo";
 
 interface AlbumGridProps {
@@ -14,7 +14,7 @@ interface AlbumGridProps {
 
 // Quita acentos y pasa a minúsculas — para búsquedas tolerantes a mayúsculas y diacríticos.
 function normalize(text: string): string {
-  return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
 function compareCromos(a: CromoDetail, b: CromoDetail, sortBy: SortBy): number {
@@ -62,7 +62,6 @@ export default function AlbumGrid({ cromos, categories, rarities }: AlbumGridPro
   const [selectedRarityId, setSelectedRarityId] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("number");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const visibleCromos = useMemo(() => {
     const normalizedQuery = normalize(searchQuery.trim());
@@ -79,27 +78,6 @@ export default function AlbumGrid({ cromos, categories, rarities }: AlbumGridPro
     return filtered.sort((a, b) => compareCromos(a, b, sortBy));
   }, [cromos, selectedCategoryId, selectedRarityId, sortBy, searchQuery]);
 
-  const selected = selectedIndex !== null ? visibleCromos[selectedIndex] : null;
-  const hasPrev = selectedIndex !== null && selectedIndex > 0;
-  const hasNext = selectedIndex !== null && selectedIndex < visibleCromos.length - 1;
-
-  const handleCategoryChange = (id: number | null) => {
-    setSelectedCategoryId(id);
-    setSelectedIndex(null);
-  };
-  const handleRarityChange = (id: number | null) => {
-    setSelectedRarityId(id);
-    setSelectedIndex(null);
-  };
-  const handleSortChange = (sort: SortBy) => {
-    setSortBy(sort);
-    setSelectedIndex(null);
-  };
-  const handleSearchChange = (query: string) => {
-    setSearchQuery(query);
-    setSelectedIndex(null);
-  };
-
   return (
     <>
       <AlbumFilters
@@ -107,35 +85,23 @@ export default function AlbumGrid({ cromos, categories, rarities }: AlbumGridPro
         rarities={rarities}
         selectedCategoryId={selectedCategoryId}
         selectedRarityId={selectedRarityId}
-        onCategoryChange={handleCategoryChange}
-        onRarityChange={handleRarityChange}
+        onCategoryChange={setSelectedCategoryId}
+        onRarityChange={setSelectedRarityId}
         sortBy={sortBy}
-        onSortChange={handleSortChange}
+        onSortChange={setSortBy}
         searchQuery={searchQuery}
-        onSearchChange={handleSearchChange}
-        isModalOpen={selected !== null}
+        onSearchChange={setSearchQuery}
       />
 
       <div className="grid justify-center grid-cols-[repeat(auto-fill,minmax(130px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-6 p-4">
-        {visibleCromos.map((cromo, i) => (
+        {visibleCromos.map((cromo) => (
           <CromoCard
             key={`${cromo.number}-${cromo.variant}`}
             cromo={cromo}
-            onClick={() => setSelectedIndex(i)}
+            href={`/cromos/${buildIdSlug(cromo.id, cromo.name)}`}
           />
         ))}
       </div>
-
-      {selected && (
-        <CromoModal
-          // key fuerza remount al cambiar de cromo: resetea showBack y la transición
-          key={selected.id}
-          cromo={selected}
-          onClose={() => setSelectedIndex(null)}
-          onPrev={hasPrev ? () => setSelectedIndex((i) => (i ?? 0) - 1) : undefined}
-          onNext={hasNext ? () => setSelectedIndex((i) => (i ?? 0) + 1) : undefined}
-        />
-      )}
     </>
   );
 }

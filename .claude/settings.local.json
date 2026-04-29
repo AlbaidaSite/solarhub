@@ -4,7 +4,9 @@
       "Bash(npm run:*)",
       "Bash(ls -la d:/Proyectos/TFG/trae/solarhub/.env*)",
       "Bash(npx tsc *)",
-      "Bash(npx supabase *)"
+      "Bash(npx supabase *)",
+      "Bash(rm 'src/app/\\(app\\)/cromos/[id]/page.tsx')",
+      "Bash(rmdir 'src/app/\\(app\\)/cromos/[id]')"
     ]
   }
 }
