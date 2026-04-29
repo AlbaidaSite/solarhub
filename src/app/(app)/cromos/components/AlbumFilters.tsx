@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { Filter, Search, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import AuroraField from "@/components/ui/AuroraField";
 import { useScrollDirection } from "@/hooks/useScrollDirection";
 import { getStorageUrl } from "@/lib/supabase/storage";
 import type { Category, Rarity, SortBy } from "@/types/cromo";
+import FilterIconButton from "./FilterIconButton";
+import RegisterCromoButton from "./RegisterCromoButton";
 
 interface AlbumFiltersProps {
   categories: Category[];
@@ -19,10 +21,13 @@ interface AlbumFiltersProps {
   onSortChange: (sort: SortBy) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  isModalOpen: boolean;
 }
 
 const ALL_ICON = getStorageUrl("categories/all.webp");
+
+// Detecta `/cromos/<digits>...` (modal o página completa de un cromo).
+// Excluye `/cromos`, `/cromos/registrar` y cualquier subruta no-cromo.
+const CROMO_DETAIL_PATH = /^\/cromos\/\d/;
 
 export default function AlbumFilters({
   categories,
@@ -35,11 +40,12 @@ export default function AlbumFilters({
   onSortChange,
   searchQuery,
   onSearchChange,
-  isModalOpen,
 }: AlbumFiltersProps) {
   const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
   const isVisible = useScrollDirection(scrollEl);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const pathname = usePathname();
+  const isCromoOpen = CROMO_DETAIL_PATH.test(pathname);
 
   useEffect(() => {
     setScrollEl(document.querySelector("main"));
@@ -132,13 +138,13 @@ export default function AlbumFilters({
         </div>
       </div>
 
-      {/* ───── Mobile (< nav 650px): botón embudo arriba-izquierda, simétrico al menú ───── */}
+      {/* ───── Mobile (< nav 650px): embudo + acceso a "registrar cromo" apilados arriba-izquierda ───── */}
       <div
-        className={`nav:hidden fixed top-0 left-0 right-0 z-50 pointer-events-none transition-transform duration-300 ${
-          isVisible && !isModalOpen ? "translate-y-0" : "-translate-y-full"
+        className={`nav:hidden fixed top-0 left-0 z-50 pointer-events-none transition-transform duration-300 ${
+          isVisible && !isCromoOpen ? "translate-y-0" : "-translate-y-full"
         }`}
       >
-        <div className="flex justify-start items-center p-6">
+        <div className="flex flex-col items-start gap-2 p-6">
           <button
             onClick={() => setIsMobileOpen(true)}
             className="text-white hover:text-gray-300 transition-colors p-2 pointer-events-auto"
@@ -146,6 +152,8 @@ export default function AlbumFilters({
           >
             <Filter size={32} />
           </button>
+
+          <RegisterCromoButton className="inline-flex pointer-events-auto" />
         </div>
       </div>
 
@@ -204,58 +212,5 @@ export default function AlbumFilters({
         </div>
       </div>
     </>
-  );
-}
-
-type FilterIconSize = "sm" | "md" | "lg";
-
-interface FilterIconButtonProps {
-  iconUrl: string;
-  label: string;
-  active: boolean;
-  size?: FilterIconSize;
-  onClick: () => void;
-}
-
-const SIZE_CLASSES: Record<FilterIconSize, string> = {
-  sm: "w-8 h-8",
-  md: "w-10 h-10",
-  lg: "w-12 h-12",
-};
-
-const SIZE_HINTS: Record<FilterIconSize, string> = {
-  sm: "32px",
-  md: "40px",
-  lg: "48px",
-};
-
-function FilterIconButton({
-  iconUrl,
-  label,
-  active,
-  size = "md",
-  onClick,
-}: FilterIconButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={active}
-      title={label}
-      className={`relative ${SIZE_CLASSES[size]} cursor-pointer transition-all duration-200 ${
-        active ? "opacity-100" : "opacity-60 hover:opacity-100"
-      }`}
-    >
-      <Image
-        src={iconUrl}
-        alt={label}
-        fill
-        sizes={SIZE_HINTS[size]}
-        className={`object-contain transition-[filter] duration-200 ${
-          active ? "drop-shadow-[0_0_8px_rgba(168,85,247,0.95)]" : ""
-        }`}
-      />
-    </button>
   );
 }

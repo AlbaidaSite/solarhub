@@ -91,7 +91,13 @@ export default function CromoModal({
     >
       <button
         type="button"
-        onClick={onClose}
+        // stopPropagation evita que el click burbujee al backdrop (outer div),
+        // cuyo onClick también es onClose: si no se para, se ejecutaría dos
+        // veces seguidas (dos `router.back()` ⇒ retrocedes dos pasos).
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
         aria-label="Cerrar"
         className="absolute top-6 left-6 z-10 p-2 rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
       >

@@ -46,9 +46,21 @@
   }
 }
 
+/* Centro de cada celda del mini-grid: la mayor parte del ciclo está apagado y
+   parpadea brevemente. Combinado con delays distintos por celda se simula
+   estrellas titilando en orden aleatorio sin coste de JS / re-renders. */
+@keyframes star-twinkle {
+  0%, 9%, 21%, 100% { opacity: 0; }
+  15% { opacity: 1; }
+}
+
 @layer components {
   .animate-twinkle {
     animation: twinkle 3s ease-in-out infinite;
+  }
+
+  .animate-star-twinkle {
+    animation: star-twinkle 5s ease-in-out infinite;
   }
 
   .center-flex {
