@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStorageUrl, getThumbUrl } from "@/lib/supabase/storage";
 import type { CromoDetail } from "@/types/cromo";
 import { buildIdSlug, parseIdSlug, slugify } from "./slug";
+import { sortCromosDefault } from "./sort";
 
 const LOCKED_IMG_PATH = "cromos/locked.webp";
 
@@ -98,7 +99,10 @@ export interface CromoNavigation {
 }
 
 // Resuelve un cromo por su segmento `<id>-<slug>` y calcula sus vecinos
-// en el orden por defecto (number, variant). 404 si:
+// usando el MISMO orden por defecto que el álbum (sortCromosDefault =
+// Categoría asc > Número asc > Variante asc). De esta forma las flechas
+// del modal navegan en el mismo orden visible que las cartas en el grid.
+// 404 si:
 //   · el formato del segmento no encaja
 //   · el cromo no existe / no es visible
 //   · el slug no coincide con el nombre real (anti-enumeración)
@@ -108,7 +112,7 @@ export async function fetchCromoWithNeighbors(
   const parsed = parseIdSlug(idSlug);
   if (!parsed) return null;
 
-  const cromos = await fetchAllCromos();
+  const cromos = sortCromosDefault(await fetchAllCromos());
   const idx = cromos.findIndex((c) => c.id === parsed.id);
   if (idx < 0) return null;
 

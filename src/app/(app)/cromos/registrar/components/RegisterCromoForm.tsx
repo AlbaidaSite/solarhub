@@ -5,6 +5,7 @@ import { Trash2 } from "lucide-react";
 
 import CornerButton from "@/components/ui/CornerButton";
 import FilterIconButton from "../../components/FilterIconButton";
+import { cromoPath } from "../../lib/slug";
 import { registerCromoAction } from "../actions";
 import type { Category } from "@/types/cromo";
 
@@ -77,7 +78,7 @@ export default function RegisterCromoForm({ categories }: RegisterCromoFormProps
   };
 
   return (
-    <div className="w-full flex flex-col items-center gap-8 pt-2 pb-12">
+    <div className="w-full flex flex-col items-center gap-8 pb-12">
       {/* Categorías */}
       <div className="flex flex-wrap justify-center gap-3 px-4">
         {categories.map((c) => (
@@ -179,7 +180,7 @@ export default function RegisterCromoForm({ categories }: RegisterCromoFormProps
             // (full page), no en la versión modal que activaría el
             // intercepting route si fuese soft nav desde /cromos/registrar.
             onClick={() => {
-              window.location.assign(`/cromos/${lastIdSlug}`);
+              window.location.assign(cromoPath(lastIdSlug));
             }}
           >
             Ir a Cromo

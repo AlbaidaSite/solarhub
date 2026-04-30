@@ -9,11 +9,27 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-// Construye `<id>-<slug>` para usar en `/cromos/<id>-<slug>`. Si el
+// Construye `<id>-<slug>` para usar en `/cromos/c/<id>-<slug>`. Si el
 // nombre no produce slug (vacío o sólo caracteres especiales), cae a `<id>`.
 export function buildIdSlug(id: number, name: string): string {
   const slug = slugify(name);
   return slug ? `${id}-${slug}` : String(id);
+}
+
+// Prefijo bajo el que viven los segmentos dinámicos de cromo. Está
+// aislado de hermanos como `/cromos/registrar` para que la intercepting
+// route `@modal/(.)c/[idSlug]` no capture rutas estáticas.
+export const CROMO_PATH_PREFIX = "/cromos/c";
+
+// Regex para detectar URLs de detalle de cromo (modal o full page).
+export const CROMO_DETAIL_PATH_RE = /^\/cromos\/c\/\d/;
+
+export function cromoPath(idSlug: string): string {
+  return `${CROMO_PATH_PREFIX}/${idSlug}`;
+}
+
+export function buildCromoPath(id: number, name: string): string {
+  return cromoPath(buildIdSlug(id, name));
 }
 
 // Parser estricto: el segmento debe empezar por dígitos. Devuelve null
