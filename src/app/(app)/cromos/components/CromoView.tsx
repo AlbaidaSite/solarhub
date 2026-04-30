@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import CromoModal from "./CromoModal";
+import { cromoPath } from "../lib/slug";
 import type { CromoDetail } from "@/types/cromo";
 
 interface NeighborRef {
@@ -29,11 +30,11 @@ export default function CromoView({ cromo, prev, next, mode }: CromoViewProps) {
   // navegación entre cromos es contextual del álbum (modal-mode).
   const onPrev =
     mode === "modal" && prev
-      ? () => router.replace(`/cromos/${prev.idSlug}`)
+      ? () => router.replace(cromoPath(prev.idSlug))
       : undefined;
   const onNext =
     mode === "modal" && next
-      ? () => router.replace(`/cromos/${next.idSlug}`)
+      ? () => router.replace(cromoPath(next.idSlug))
       : undefined;
 
   return (

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import Image from "next/image";
-import Link from "next/link";
 
 interface CromoCardProps {
   cromo: {
@@ -12,10 +11,10 @@ interface CromoCardProps {
     isLocked: boolean;
     how_to: string | null;
   };
-  href: string;
+  onClick?: () => void;
 }
 
-interface VanillaTiltNode extends HTMLAnchorElement {
+interface VanillaTiltNode extends HTMLButtonElement {
   vanillaTilt?: { destroy: () => void };
 }
 
@@ -25,7 +24,7 @@ interface VanillaTiltNode extends HTMLAnchorElement {
 const GENERIC_BLUR_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAQAAAAlAOY/AAAAFklEQVR42mNk+M9Qz8DAwMjA8B8AB44C/4gtoeMAAAAASUVORK5CYII=";
 
-export default function CromoCard({ cromo, href }: CromoCardProps) {
+export default function CromoCard({ cromo, onClick }: CromoCardProps) {
   const tiltRef = useRef<VanillaTiltNode>(null);
 
   useEffect(() => {
@@ -58,11 +57,12 @@ export default function CromoCard({ cromo, href }: CromoCardProps) {
   const showHowToOverlay = cromo.isLocked && cromo.how_to;
 
   return (
-    <Link
+    <button
       ref={tiltRef}
-      href={href}
+      type="button"
+      onClick={onClick}
       aria-label={cromo.name}
-      className="group will-change-transform rounded-xl block w-full p-0 cursor-pointer"
+      className="group will-change-transform rounded-xl block w-full p-0 text-left cursor-pointer bg-transparent border-0"
     >
       <div className="relative w-full aspect-1642/2223 rounded-xl overflow-hidden bg-zinc-900 transition-all duration-300 hover:shadow-[0_0_0_2px_#343742,0_0_12px_#E0E7FF]">
         <Image
@@ -85,6 +85,6 @@ export default function CromoCard({ cromo, href }: CromoCardProps) {
           </div>
         )}
       </div>
-    </Link>
+    </button>
   );
 }

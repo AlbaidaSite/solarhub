@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Filter, Search, X } from "lucide-react";
-import { usePathname } from "next/navigation";
 import AuroraField from "@/components/ui/AuroraField";
 import { useScrollDirection } from "@/hooks/useScrollDirection";
 import { getStorageUrl } from "@/lib/supabase/storage";
@@ -21,13 +20,10 @@ interface AlbumFiltersProps {
   onSortChange: (sort: SortBy) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  isModalOpen: boolean;
 }
 
 const ALL_ICON = getStorageUrl("categories/all.webp");
-
-// Detecta `/cromos/<digits>...` (modal o página completa de un cromo).
-// Excluye `/cromos`, `/cromos/registrar` y cualquier subruta no-cromo.
-const CROMO_DETAIL_PATH = /^\/cromos\/\d/;
 
 export default function AlbumFilters({
   categories,
@@ -40,12 +36,11 @@ export default function AlbumFilters({
   onSortChange,
   searchQuery,
   onSearchChange,
+  isModalOpen,
 }: AlbumFiltersProps) {
   const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
   const isVisible = useScrollDirection(scrollEl);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const pathname = usePathname();
-  const isCromoOpen = CROMO_DETAIL_PATH.test(pathname);
 
   useEffect(() => {
     setScrollEl(document.querySelector("main"));
@@ -113,9 +108,10 @@ export default function AlbumFilters({
               aria-label="Ordenar por"
             >
               <option value="number">Ordenar por número</option>
-              <option value="rarity_desc">Rareza descendente</option>
               <option value="rarity_asc">Rareza ascendente</option>
-              <option value="name">Nombre</option>
+              <option value="rarity_desc">Rareza descendente</option>
+              <option value="name_asc">Nombre ascendente</option>
+              <option value="name_desc">Nombre descendente</option>
             </AuroraField>
           </div>
 
@@ -141,7 +137,7 @@ export default function AlbumFilters({
       {/* ───── Mobile (< nav 650px): embudo + acceso a "registrar cromo" apilados arriba-izquierda ───── */}
       <div
         className={`nav:hidden fixed top-0 left-0 z-50 pointer-events-none transition-transform duration-300 ${
-          isVisible && !isCromoOpen ? "translate-y-0" : "-translate-y-full"
+          isVisible && !isModalOpen ? "translate-y-0" : "-translate-y-full"
         }`}
       >
         <div className="flex flex-col items-start gap-2 p-6">
@@ -193,9 +189,10 @@ export default function AlbumFilters({
               aria-label="Ordenar por"
             >
               <option value="number">Ordenar por número</option>
-              <option value="rarity_desc">Rareza descendente</option>
               <option value="rarity_asc">Rareza ascendente</option>
-              <option value="name">Nombre</option>
+              <option value="rarity_desc">Rareza descendente</option>
+              <option value="name_asc">Nombre ascendente</option>
+              <option value="name_desc">Nombre descendente</option>
             </AuroraField>
 
             <AuroraField

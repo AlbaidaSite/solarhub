@@ -36,21 +36,16 @@ export default function CromoModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, onPrev, onNext]);
 
-  // Bloquea scroll del album mientras el modal esté abierto.
-  // Pone scrollTop=0 antes de bloquear para forzar al navbar a aparecer
-  // (useScrollDirection lo muestra cuando scrollTop ≤ 10).
+  // Bloquea el scroll del álbum mientras el modal esté abierto para que
+  // el fondo semitransparente muestre exactamente la posición actual del
+  // usuario. No se modifica scrollTop: el álbum queda congelado donde está.
   useEffect(() => {
     const main = document.querySelector("main");
     if (!main) return;
     const prevOverflow = main.style.overflow;
-    const prevScroll = main.scrollTop;
-
-    main.scrollTop = 0;
     main.style.overflow = "hidden";
-
     return () => {
       main.style.overflow = prevOverflow;
-      main.scrollTop = prevScroll;
     };
   }, []);
 
@@ -86,7 +81,7 @@ export default function CromoModal({
 
   return (
     <div
-      className="fixed inset-0 z-40 bg-black/90 backdrop-blur-md overflow-y-auto md:overflow-hidden scrollbar-clean"
+      className="fixed inset-0 z-40 bg-black/87 backdrop-blur-md overflow-y-auto md:overflow-hidden scrollbar-clean"
       onClick={onClose}
     >
       <button

@@ -1,5 +1,5 @@
-import CromoView from "../../components/CromoView";
-import { fetchCromoWithNeighbors } from "../../lib/cromos-fetch";
+import CromoView from "../../../components/CromoView";
+import { fetchCromoWithNeighbors } from "../../../lib/cromos-fetch";
 
 interface PageProps {
   params: Promise<{ idSlug: string }>;

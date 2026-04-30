@@ -29,7 +29,12 @@ export interface Rarity {
   icon_path: string;       // URL resuelta
 }
 
-export type SortBy = 'number' | 'rarity_desc' | 'rarity_asc' | 'name';
+export type SortBy =
+  | 'number'        // Categoría(Asc) > Número(Asc)
+  | 'rarity_asc'    // Rareza(Asc) > Categoría(Asc) > Número(Asc)
+  | 'rarity_desc'   // Rareza(Desc) > Categoría(Asc) > Número(Asc)
+  | 'name_asc'      // Nombre(Asc)
+  | 'name_desc';    // Nombre(Desc)
 
 export interface CromoDetail {
   id: number;
