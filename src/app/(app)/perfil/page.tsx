@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogOut, Pencil } from "lucide-react";
+import { LogOut, Pencil, UserCog } from "lucide-react";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStorageUrl } from "@/lib/supabase/storage";
@@ -26,26 +26,46 @@ export default async function PerfilPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("profile")
-    .select("username, name, profile_img")
-    .eq("id", user.id)
-    .single();
+  const [profileRes, isStaffRes] = await Promise.all([
+    supabase
+      .from("profile")
+      .select("username, name, profile_img")
+      .eq("id", user.id)
+      .single(),
+    supabase.rpc("is_staff"),
+  ]);
+  const profile = profileRes.data;
+  const isStaff = Boolean(isStaffRes.data);
 
   const avatarUrl = getStorageUrl(profile?.profile_img || DEFAULT_AVATAR_PATH);
 
   return (
     <div className="relative w-full flex flex-col">
-      <form action={logoutAction} className="absolute top-0 left-0 z-10">
-        <button
-          type="submit"
-          aria-label="Cerrar sesión"
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-white/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
-        >
-          <LogOut size={22} strokeWidth={2.5} />
-          <span className="hidden nav:block text-base font-bold">Cerrar sesión</span>
-        </button>
-      </form>
+      {/* Cluster izquierdo: logout + (sólo staff) acceso al panel */}
+      <div className="absolute top-0 left-0 z-10 flex items-center gap-2">
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            aria-label="Cerrar sesión"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-white/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
+          >
+            <LogOut size={22} strokeWidth={2.5} />
+            <span className="hidden nav:block text-base font-bold">Cerrar sesión</span>
+          </button>
+        </form>
+
+        {isStaff && (
+          <Link
+            href="/staff"
+            aria-label="Panel de staff"
+            title="Panel de staff"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-full text-white/70 hover:text-amber-300 hover:bg-white/5 transition-colors"
+          >
+            <UserCog size={22} strokeWidth={2.5} />
+            <span className="hidden nav:block text-base font-bold">Staff</span>
+          </Link>
+        )}
+      </div>
 
       <Link
         href="/perfil/editar"
