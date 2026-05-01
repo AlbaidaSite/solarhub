@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { Pencil, Trash2 } from "lucide-react";
 import { deleteCromoAction } from "../actions";
 
@@ -70,14 +71,14 @@ export default function CromoAdminList({ cromos: initial }: { cromos: CromoRow[]
                 <td className="px-4 py-3 text-center tabular-nums">{c.variant}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    <button
-                      type="button"
+                    <Link
+                      href={`/staff/cromos/${c.id}`}
                       aria-label="Editar cromo"
                       title="Editar"
-                      className="p-1.5 rounded-lg text-white/50 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg text-white/50 hover:text-amber-300 hover:bg-white/5 transition-colors"
                     >
                       <Pencil size={16} strokeWidth={2} />
-                    </button>
+                    </Link>
                     <button
                       type="button"
                       aria-label="Eliminar cromo"
