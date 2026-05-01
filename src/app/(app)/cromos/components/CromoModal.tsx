@@ -201,11 +201,22 @@ export default function CromoModal({
           {/* Bloque 1 */}
           <div className="flex gap-4">
             <div className="flex-1 flex flex-col gap-4">
-              <h1 className="text-3xl font-bold text-white">{cromo.name}</h1>
-              {cromo.description && (
+              {/* Nombre: "Bloqueado" si locked, real si desbloqueado */}
+              <h1 className="text-3xl font-bold text-white">
+                {cromo.isLocked ? "Bloqueado" : cromo.name}
+              </h1>
+
+              {/* Descripción: texto fijo si locked, real si desbloqueado */}
+              {cromo.isLocked ? (
+                <p className="text-zinc-400 italic">
+                  Este cromo aún no ha sido desbloqueado.
+                </p>
+              ) : cromo.description ? (
                 <p className="text-zinc-200 leading-relaxed">{cromo.description}</p>
-              )}
-              {cromo.artists.length > 0 && (
+              ) : null}
+
+              {/* Artistas: solo cuando está desbloqueado */}
+              {!cromo.isLocked && cromo.artists.length > 0 && (
                 <p className="text-white">
                   <span className="font-bold underline mr-2">
                     {cromo.artists.length === 1 ? "Artist :" : "Artists :"}
@@ -231,6 +242,7 @@ export default function CromoModal({
               )}
             </div>
 
+            {/* Categoría, número y rareza: siempre visibles */}
             <div className="flex flex-col items-end gap-3 shrink-0">
               {cromo.category && (
                 <Image
@@ -260,6 +272,7 @@ export default function CromoModal({
 
           {/* Bloque 2 */}
           <div className="flex flex-col gap-4">
+            {/* how_to_extended: siempre visible */}
             {cromo.how_to_extended && (
               <p className="text-white">
                 <span className="font-bold underline mr-2">Cómo obtener :</span>
@@ -267,19 +280,24 @@ export default function CromoModal({
               </p>
             )}
 
-            <p className="text-white">
-              <span className="font-bold underline mr-2">Conseguido el :</span>
-              <span className="text-zinc-300">DD/MM/YYYY</span>
-            </p>
+            {/* Campos de posesión / intercambio: solo desbloqueado */}
+            {!cromo.isLocked && (
+              <>
+                <p className="text-white">
+                  <span className="font-bold underline mr-2">Conseguido el :</span>
+                  <span className="text-zinc-300">DD/MM/YYYY</span>
+                </p>
 
-            <p className="text-white">
-              <span className="font-bold underline mr-2">Copias :</span>
-              <span className="text-zinc-300">— / {cromo.copies}</span>
-            </p>
+                <p className="text-white">
+                  <span className="font-bold underline mr-2">Copias :</span>
+                  <span className="text-zinc-300">— / {cromo.copies}</span>
+                </p>
 
-            <div className="self-end mt-4">
-              <CornerButton type="button">Intercambiar</CornerButton>
-            </div>
+                <div className="self-end mt-4">
+                  <CornerButton type="button">Intercambiar</CornerButton>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
