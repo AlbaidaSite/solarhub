@@ -168,7 +168,6 @@ export default function CromoCreateForm({
           console.error("Error generando ZIP:", err);
         }
         router.push("/staff/cromos");
-        router.refresh();
       } else {
         setCreateError(result.error);
       }

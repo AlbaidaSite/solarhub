@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Paintbrush, Plus } from "lucide-react";
 import { requireStaff } from "../lib/auth";
 import StaffBackButton from "../components/StaffBackButton";
 import CromoAdminList from "./components/CromoAdminList";
@@ -39,7 +39,15 @@ export default async function StaffCromosPage() {
 
       <h1 className="text-3xl font-bold text-white text-center mt-12">Cromos</h1>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <Link
+          href="/staff/cromos/artistas"
+          className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white font-semibold shadow transition-colors"
+        >
+          <Paintbrush size={18} strokeWidth={2.5} />
+          Artistas
+        </Link>
+
         <Link
           href="/staff/cromos/crear"
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow transition-colors"
