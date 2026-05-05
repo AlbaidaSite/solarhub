@@ -8,6 +8,7 @@ import { getStorageUrl } from "@/lib/supabase/storage";
 import type { Category, Rarity, SortBy } from "@/types/cromo";
 import FilterIconButton from "./FilterIconButton";
 import RegisterCromoButton from "./RegisterCromoButton";
+import IntercambiosButton from "./IntercambiosButton";
 
 interface AlbumFiltersProps {
   categories: Category[];
@@ -140,7 +141,7 @@ export default function AlbumFilters({
           isVisible && !isModalOpen ? "translate-y-0" : "-translate-y-full"
         }`}
       >
-        <div className="flex flex-col items-start gap-2 p-6">
+        <div className="flex flex-col items-start gap-1 p-6">
           <button
             onClick={() => setIsMobileOpen(true)}
             className="text-white hover:text-gray-300 transition-colors p-2 pointer-events-auto"
@@ -149,7 +150,11 @@ export default function AlbumFilters({
             <Filter size={32} />
           </button>
 
-          <RegisterCromoButton className="inline-flex pointer-events-auto" />
+          {/* Registrar (izquierda) e Intercambios (derecha) en la misma fila */}
+          <div className="flex items-center">
+            <RegisterCromoButton className="inline-flex pointer-events-auto" />
+            <IntercambiosButton className="inline-flex pointer-events-auto" />
+          </div>
         </div>
       </div>
 

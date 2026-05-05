@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Repeat, X } from "lucide-react";
 import CornerButton from "@/components/ui/CornerButton";
+import TradeCromoPanel from "./TradeCromoPanel";
 import type { CromoDetail } from "@/types/cromo";
 
 interface CromoModalProps {
@@ -19,7 +20,30 @@ export default function CromoModal({
   onPrev,
   onNext,
 }: CromoModalProps) {
-  const [showBack, setShowBack] = useState(false);
+  const [showBack, setShowBack]           = useState(false);
+  const [showTradePanel, setShowTradePanel] = useState(false);
+  const [selectedUniqueIds, setSelectedUniqueIds] = useState<number[]>([]);
+  const [tradeError, setTradeError] = useState<string | null>(null);
+
+  const toggleUniqueSelected = (uniqueId: number) => {
+    setTradeError(null);
+    setSelectedUniqueIds((prev) =>
+      prev.includes(uniqueId)
+        ? prev.filter((id) => id !== uniqueId)
+        : [...prev, uniqueId],
+    );
+  };
+
+  const handleOpenTradePanel = () => {
+    if (selectedUniqueIds.length === 0) {
+      setTradeError(
+        "Es necesario escoger la copia a intercambiar en el apartado Copias.",
+      );
+      return;
+    }
+    setTradeError(null);
+    setShowTradePanel(true);
+  };
 
   // Tracking de touch para distinguir swipe horizontal de tap (flip)
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -288,19 +312,79 @@ export default function CromoModal({
                   <span className="text-zinc-300">DD/MM/YYYY</span>
                 </p>
 
-                <p className="text-white">
-                  <span className="font-bold underline mr-2">Copias :</span>
-                  <span className="text-zinc-300">— / {cromo.copies}</span>
-                </p>
+                {/* Copias: lista seleccionable de los copy_numbers que el
+                    usuario posee actualmente. Se usa para elegir cuáles
+                    enviar al intercambio. Si no posee ninguno, se muestra
+                    el placeholder genérico. */}
+                {cromo.userOwnedUniques.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <span className="font-bold underline text-white">Copias :</span>
+                    <div className="flex flex-wrap gap-2">
+                      {cromo.userOwnedUniques.map((u) => {
+                        const sel = selectedUniqueIds.includes(u.uniqueId);
+                        return (
+                          <button
+                            key={u.uniqueId}
+                            type="button"
+                            onClick={() => toggleUniqueSelected(u.uniqueId)}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                              sel
+                                ? "bg-amber-300/20 border-amber-300/60 text-amber-200"
+                                : "bg-white/5 border-white/15 text-white/70 hover:bg-white/10"
+                            }`}
+                          >
+                            #{u.copyNumber}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-white">
+                    <span className="font-bold underline mr-2">Copias :</span>
+                    <span className="text-zinc-300">— / {cromo.copies}</span>
+                  </p>
+                )}
 
-                <div className="self-end mt-4">
-                  <CornerButton type="button">Intercambiar</CornerButton>
-                </div>
+                {tradeError && (
+                  <p className="text-red-400 text-sm">{tradeError}</p>
+                )}
+
+                {/* Intercambiar: solo si el usuario tiene al menos un unique de este cromo */}
+                {cromo.userOwnedUniques.length > 0 && (
+                  <div className="self-end mt-4">
+                    <CornerButton
+                      type="button"
+                      onClick={handleOpenTradePanel}
+                    >
+                      Intercambiar
+                    </CornerButton>
+                  </div>
+                )}
               </>
             )}
           </div>
         </div>
       </div>
+
+      {/* Panel de intercambio: overlay sobre el modal.
+          onClick stopPropagation evita que los clicks dentro del panel
+          burbujeen al backdrop del modal (que tiene onClick={onClose}). */}
+      {showTradePanel && (
+        <div
+          className="absolute inset-0 z-50 bg-black/90 backdrop-blur-sm p-8 overflow-y-auto scrollbar-clean"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <TradeCromoPanel
+            cromoName={cromo.name}
+            selectedUniqueIds={selectedUniqueIds}
+            onClose={() => {
+              setShowTradePanel(false);
+              setSelectedUniqueIds([]);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
