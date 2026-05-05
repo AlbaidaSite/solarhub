@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildIdSlug } from "../lib/slug";
 
 export type RegisterCromoResult =
-  | { ok: true; idSlug: string }
+  | { ok: true; idSlug: string; uniqueId: number }
   | {
       ok: false;
       reason: "unauthorized" | "not_found" | "unknown";
@@ -87,7 +87,7 @@ export async function registerCromoAction(
     return { ok: false, reason: "unknown", message: existsError.message };
   }
   if (existing) {
-    return { ok: true, idSlug };
+    return { ok: true, idSlug, uniqueId };
   }
 
   const { error: insertError } = await supabase
@@ -101,5 +101,5 @@ export async function registerCromoAction(
     return { ok: false, reason: "unknown", message: insertError.message };
   }
 
-  return { ok: true, idSlug };
+  return { ok: true, idSlug, uniqueId };
 }

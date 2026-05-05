@@ -36,6 +36,11 @@ export type SortBy =
   | 'name_asc'      // Nombre(Asc)
   | 'name_desc';    // Nombre(Desc)
 
+export interface OwnedUnique {
+  uniqueId: number;
+  copyNumber: number;
+}
+
 export interface CromoDetail {
   id: number;
   name: string;
@@ -49,6 +54,9 @@ export interface CromoDetail {
   front_thumb: string;     // URL resuelta (thumbnail ~400px)
   back_img: string;        // URL resuelta (full)
   isLocked: boolean;
+  // Uniques que el usuario logueado posee actualmente de este cromo.
+  // Vacío si no posee ninguno o si la llamada no tiene contexto de usuario.
+  userOwnedUniques: OwnedUnique[];
   rarity: { id: number; name: string; icon_path: string } | null;
   category: { id: number; name: string; icon_path: string; order_number: number } | null;
   artists: Array<{ name: string; url: string | null }>;
