@@ -15,3 +15,20 @@ export interface Sticker {
   name: string;
   icon_path: string;
 }
+
+export type MediaType = "PHOTO" | "VIDEO";
+
+export interface MapMedia {
+  id: number;
+  pin_id: number;
+  url: string;
+  type: MediaType;
+}
+
+export interface PinDetail {
+  pin: Pin;
+  countryName: string;
+  username: string;
+  sticker: Sticker | null;
+  media: MapMedia[];
+}
