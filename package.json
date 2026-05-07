@@ -8,11 +8,14 @@
     "start": "next start",
     "lint": "eslint",
     "type-check": "tsc --noEmit",
-    "generate-thumbnails": "node --env-file=.env.development scripts/generate-thumbnails.mjs"
+    "generate-thumbnails": "node --env-file=.env.development scripts/generate-thumbnails.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.104.1",
+    "browser-image-compression": "^2.0.2",
+    "heic2any": "^0.0.4",
     "jszip": "^3.10.1",
     "lucide-react": "^0.563.0",
     "next": "^16.2.4",
@@ -33,6 +36,7 @@
     "sharp": "^0.33.5",
     "supabase": "^2.92.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.5"
   }
 }
