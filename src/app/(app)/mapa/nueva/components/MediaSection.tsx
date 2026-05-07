@@ -234,6 +234,8 @@ interface MediaSectionProps {
   onRemove: (clientId: string) => void;
   onUpdate: (clientId: string, changes: Partial<MediaEntry>) => void;
   disabled?: boolean;
+  /** Maximum number of new entries allowed. Defaults to MAX_FILES (5). */
+  maxFiles?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,9 +248,10 @@ export default function MediaSection({
   onRemove,
   onUpdate,
   disabled = false,
+  maxFiles = MAX_FILES,
 }: MediaSectionProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const remaining = MAX_FILES - entries.length;
+  const remaining = maxFiles - entries.length;
   const atMax = remaining <= 0;
 
   const handleFiles = useCallback(
@@ -351,7 +354,7 @@ export default function MediaSection({
       {/* Counter + add button */}
       <div className="flex items-center justify-between mt-2">
         <span className="text-xs text-white/40">
-          {entries.length}/{MAX_FILES} archivos
+          {entries.length}/{maxFiles} archivos
         </span>
         <button
           type="button"

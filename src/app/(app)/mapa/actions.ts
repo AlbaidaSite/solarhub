@@ -216,6 +216,137 @@ export async function createPinAction(
   return { ok: true, pinId: inserted.id as number };
 }
 
+// ---------------------------------------------------------------------------
+// Internal: checks if the current user can edit/delete a given pin.
+// Returns true if owner, staff, or superuser.
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function canEditPin(supabase: any, pinId: number): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data: pin } = await supabase
+    .from("pin")
+    .select("user_id")
+    .eq("id", pinId)
+    .maybeSingle();
+
+  if (!pin) return false;
+  if ((pin.user_id as string) === user.id) return true;
+
+  // Not the owner — use the SECURITY DEFINER RPC to bypass credentials RLS
+  const { data: isStaff } = await supabase.rpc("is_staff");
+  return !!isStaff;
+}
+
+export async function checkPinEditPermissionAction(pinId: number): Promise<boolean> {
+  const supabase = await createSupabaseServerClient();
+  return canEditPin(supabase, pinId);
+}
+
+export interface UpdatePinData {
+  sticker_id: number;
+  country_code: string;
+  state: string | null;
+  place: string;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+}
+
+export async function updatePinAction(
+  pinId: number,
+  data: UpdatePinData
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createSupabaseServerClient();
+
+  const allowed = await canEditPin(supabase, pinId);
+  if (!allowed) return { ok: false, error: "Sin permiso para editar este pin" };
+
+  if (!data.sticker_id || !data.country_code || !data.place.trim()) {
+    return { ok: false, error: "Faltan campos obligatorios" };
+  }
+  if (data.latitude < -90 || data.latitude > 90) {
+    return { ok: false, error: "Latitud fuera de rango [-90, 90]" };
+  }
+  if (data.longitude < -180 || data.longitude > 180) {
+    return { ok: false, error: "Longitud fuera de rango [-180, 180]" };
+  }
+
+  const { error } = await supabase
+    .from("pin")
+    .update({
+      sticker_id: data.sticker_id,
+      country_code: data.country_code,
+      state: data.state || null,
+      place: data.place.trim(),
+      latitude: data.latitude,
+      longitude: data.longitude,
+      created_at: data.created_at,
+    })
+    .eq("id", pinId);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+const STORAGE_BUCKET_SERVER =
+  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ?? "solarhub-assets";
+
+export async function deleteMapMediaAction(
+  mediaId: number,
+  pinId: number
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createSupabaseServerClient();
+
+  const allowed = await canEditPin(supabase, pinId);
+  if (!allowed) return { ok: false, error: "Sin permiso" };
+
+  const { data: media } = await supabase
+    .from("map_media")
+    .select("path")
+    .eq("id", mediaId)
+    .eq("pin_id", pinId)
+    .maybeSingle();
+
+  if (!media) return { ok: false, error: "Media no encontrada" };
+
+  await supabase.storage
+    .from(STORAGE_BUCKET_SERVER)
+    .remove([media.path as string]);
+
+  const { error } = await supabase.from("map_media").delete().eq("id", mediaId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export async function deletePinAction(
+  pinId: number
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createSupabaseServerClient();
+
+  const allowed = await canEditPin(supabase, pinId);
+  if (!allowed) return { ok: false, error: "Sin permiso para eliminar este pin" };
+
+  // Collect all storage paths before deleting
+  const { data: mediaRows } = await supabase
+    .from("map_media")
+    .select("path")
+    .eq("pin_id", pinId);
+
+  if (mediaRows && mediaRows.length > 0) {
+    const paths = mediaRows.map((m) => m.path as string);
+    await supabase.storage.from(STORAGE_BUCKET_SERVER).remove(paths);
+  }
+
+  await supabase.from("map_media").delete().eq("pin_id", pinId);
+
+  const { error } = await supabase.from("pin").delete().eq("id", pinId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 const MAX_MEDIA_SIZE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MEDIA_TYPES = new Set(["PHOTO", "VIDEO"]);
 
@@ -237,13 +368,9 @@ export async function addMapMediaAction(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, errors: ["No autenticado"] };
 
-  // Verify pin belongs to user
-  const { data: pin } = await supabase
-    .from("pin")
-    .select("user_id")
-    .eq("id", pinId)
-    .maybeSingle();
-  if (!pin || (pin.user_id as string) !== user.id) {
+  // Verify permission (owner, staff, or superuser)
+  const allowed = await canEditPin(supabase, pinId);
+  if (!allowed) {
     return { ok: false, errors: ["Pin no encontrado o sin permiso"] };
   }
 
