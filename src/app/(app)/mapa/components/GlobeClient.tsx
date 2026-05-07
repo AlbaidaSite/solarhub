@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Globe from "react-globe.gl";
+import { Plus } from "lucide-react";
 import { getPinDetailAction } from "../actions";
 import PinModal from "./PinModal";
 import ClusterPopup from "./ClusterPopup";
@@ -90,6 +92,7 @@ function angularExtentDeg(
 }
 
 export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
+  const router = useRouter();
   const globeEl = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipState>({
@@ -351,11 +354,39 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
       }
     };
 
+    // Los pines son elementos HTML que flotan sobre el canvas. Cuando el
+    // cursor está sobre uno de ellos, los eventos wheel van al pin en lugar
+    // de al canvas, por lo que OrbitControls no los recibe y el zoom deja
+    // de funcionar. Este handler reenvía el wheel al canvas para que el
+    // zoom siga activo independientemente de dónde esté el cursor.
+    const handleWheel = (e: WheelEvent) => {
+      const canvas = globeContainer?.querySelector<HTMLCanvasElement>("canvas");
+      if (canvas && e.target !== canvas) {
+        canvas.dispatchEvent(
+          new WheelEvent("wheel", {
+            bubbles: false,
+            cancelable: e.cancelable,
+            deltaX: e.deltaX,
+            deltaY: e.deltaY,
+            deltaZ: e.deltaZ,
+            deltaMode: e.deltaMode,
+            ctrlKey: e.ctrlKey,
+            altKey: e.altKey,
+            shiftKey: e.shiftKey,
+            metaKey: e.metaKey,
+            clientX: e.clientX,
+            clientY: e.clientY,
+          })
+        );
+      }
+    };
+
     const globeContainer = containerRef.current;
     if (globeContainer) {
       globeContainer.addEventListener("mouseenter", handleMouseEnter, true);
       globeContainer.addEventListener("mouseleave", handleMouseLeave, true);
       globeContainer.addEventListener("click", handleClick, true);
+      globeContainer.addEventListener("wheel", handleWheel, { passive: true });
     }
 
     return () => {
@@ -363,6 +394,7 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
         globeContainer.removeEventListener("mouseenter", handleMouseEnter, true);
         globeContainer.removeEventListener("mouseleave", handleMouseLeave, true);
         globeContainer.removeEventListener("click", handleClick, true);
+        globeContainer.removeEventListener("wheel", handleWheel);
       }
     };
   }, [formatDate, handleClusterClick, handlePinClick, pins]);
@@ -479,6 +511,18 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
           {tooltip.content}
         </div>
       )}
+
+      {/* Añadir Pegatina button */}
+      <button
+        type="button"
+        onClick={() => router.push("/mapa/nueva")}
+        aria-label="Añadir Pegatina"
+        title="Añadir Pegatina"
+        className="absolute z-20 top-7 left-4 nav:top-28 nav:left-4 flex items-center justify-center gap-2 w-10 h-10 nav:w-auto nav:h-12 nav:px-4 rounded-full bg-white/10 hover:bg-white/20 border border-white/30 text-white hover:text-amber-300 transition-all duration-0 shadow-lg backdrop-blur-sm cursor-pointer"
+      >
+        <Plus size={20} strokeWidth={2.5} />
+        <span className="hidden nav:inline text-sm font-semibold">Añadir Pegatina</span>
+      </button>
 
       {/* Attribution footer */}
       <div className="absolute bottom-4 right-4 text-xs text-white/50 select-none pointer-events-none">

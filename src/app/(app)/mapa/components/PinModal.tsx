@@ -62,6 +62,7 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
         className="min-h-full md:h-full w-full max-w-6xl mx-auto flex flex-col md:flex-row gap-8 px-6 pt-32 pb-8"
         onClick={(e) => e.stopPropagation()}
       >
+        
         {/* Columna izquierda: visor de medios + carrusel */}
         <div className="md:w-1/2 flex flex-col gap-4 min-h-0">
           <div className="relative w-full aspect-square bg-zinc-900 rounded-xl overflow-hidden border border-white/10">
@@ -92,16 +93,16 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
             )}
           </div>
 
-          {/* Carrusel de miniaturas */}
+          {/* Carrusel de miniaturas flex flex-wrap gap-2 pb-1*/}
           {media.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto scrollbar-clean pb-1">
+            <div className="flex flex-wrap gap-2 scrollbar-clean pb-1">
               {media.map((m, idx) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => setActiveMediaIdx(idx)}
                   aria-label={`Ver ${m.type === "PHOTO" ? "foto" : "vídeo"} ${idx + 1}`}
-                  className={`relative shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all cursor-pointer bg-zinc-900 ${
+                  className={`relative shrink-0 w-15 h-10 rounded-lg overflow-hidden border-2 transition-all cursor-pointer bg-zinc-900 ${
                     idx === activeMediaIdx
                       ? "border-amber-300"
                       : "border-white/10 hover:border-white/30"
@@ -125,7 +126,7 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
                         playsInline
                       />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                        <div className="w-0 h-0 border-y-[8px] border-y-transparent border-l-[12px] border-l-white ml-1" />
+                        <div className="w-0 h-0 border-y-8 border-y-transparent border-l-12 border-l-white" />
                       </div>
                     </>
                   )}
