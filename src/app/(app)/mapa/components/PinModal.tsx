@@ -1,29 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, Pencil, Trash2, X } from "lucide-react";
 import type { PinDetail } from "@/types/map";
+import { checkPinEditPermissionAction, deletePinAction } from "../actions";
 
 interface PinModalProps {
   detail: PinDetail;
   onClose: () => void;
+  onDelete?: () => void;
 }
 
-export default function PinModal({ detail, onClose }: PinModalProps) {
+type DeleteStep = null | "confirm1" | "confirm2";
+
+export default function PinModal({ detail, onClose, onDelete }: PinModalProps) {
+  const router = useRouter();
   const { pin, countryName, username, sticker, media } = detail;
   const [activeMediaIdx, setActiveMediaIdx] = useState(0);
+  const [canEdit, setCanEdit] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<DeleteStep>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  // Escape cierra el modal
+  // Check if current user can edit/delete this pin
+  useEffect(() => {
+    checkPinEditPermissionAction(pin.id).then(setCanEdit);
+  }, [pin.id]);
+
+  // Escape closes the modal (unless a delete confirmation is open)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (deleteStep !== null) {
+          setDeleteStep(null);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, deleteStep]);
 
-  // Bloquear scroll del fondo mientras esté abierto
+  // Lock background scroll while open
   useEffect(() => {
     const main = document.querySelector("main");
     if (!main) return;
@@ -34,11 +55,21 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
     };
   }, []);
 
+  const handleDelete = () => {
+    startTransition(async () => {
+      setDeleteError(null);
+      const result = await deletePinAction(pin.id);
+      if (result.ok) {
+        onDelete?.();
+      } else {
+        setDeleteError(result.error ?? "Error al eliminar");
+        setDeleteStep(null);
+      }
+    });
+  };
+
   const activeMedia = media[activeMediaIdx];
-
-  // Construir línea "Place, State, CountryName"
   const locationLine = [pin.place, pin.state, countryName].filter(Boolean).join(", ");
-
   const mapsUrl = `https://www.google.com/maps/place/${pin.latitude},${pin.longitude}`;
 
   return (
@@ -46,6 +77,7 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
       className="fixed inset-0 z-40 bg-black/87 backdrop-blur-md overflow-y-auto md:overflow-hidden scrollbar-clean"
       onClick={onClose}
     >
+      {/* Close button — top-left */}
       <button
         type="button"
         onClick={(e) => {
@@ -58,12 +90,101 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
         <X size={35} />
       </button>
 
+      {/* Edit / Delete buttons — top-right (only for owners / staff) */}
+      {canEdit && (
+        <div
+          className="absolute top-32 right-6 z-10 flex items-center gap-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => router.push(`/mapa/editar/${pin.id}`)}
+            aria-label="Editar pegatina"
+            title="Editar"
+            className="p-2 rounded-full text-white/60 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
+          >
+            <Pencil size={22} />
+          </button>
+          <button
+            type="button"
+            onClick={() => { setDeleteError(null); setDeleteStep("confirm1"); }}
+            aria-label="Eliminar pegatina"
+            title="Eliminar"
+            className="p-2 rounded-full text-white/60 hover:text-red-400 hover:bg-white/5 transition-colors cursor-pointer"
+          >
+            <Trash2 size={22} />
+          </button>
+        </div>
+      )}
+
+      {/* Delete confirmation overlay */}
+      {deleteStep !== null && (
+        <div
+          className="absolute inset-0 z-20 flex items-center justify-center bg-black/60"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-zinc-900 border border-white/15 rounded-2xl p-6 w-80 flex flex-col gap-5 shadow-2xl mx-4">
+            <p className="text-white font-semibold">
+              {deleteStep === "confirm1"
+                ? "¿Eliminar esta pegatina?"
+                : "Esta acción no se puede deshacer."}
+            </p>
+            {deleteStep === "confirm2" && (
+              <p className="text-white/50 text-sm -mt-2">
+                Se borrarán también todos los archivos multimedia adjuntos.
+              </p>
+            )}
+            {deleteError && (
+              <p className="text-red-400 text-sm">{deleteError}</p>
+            )}
+            <div className="flex gap-3">
+              {deleteStep === "confirm1" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteStep("confirm2")}
+                    className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition-colors cursor-pointer"
+                  >
+                    Sí, eliminar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteStep(null)}
+                    className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteStep(null)}
+                    disabled={isPending}
+                    className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={isPending}
+                    className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isPending ? "Eliminando…" : "Confirmar"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         className="min-h-full md:h-full w-full max-w-6xl mx-auto flex flex-col md:flex-row gap-8 px-6 pt-32 pb-8"
         onClick={(e) => e.stopPropagation()}
       >
-        
-        {/* Columna izquierda: visor de medios + carrusel */}
+        {/* Left column: media viewer + carousel */}
         <div className="md:w-1/2 flex flex-col gap-4 min-h-0">
           <div className="relative w-full aspect-square bg-zinc-900 rounded-xl overflow-hidden border border-white/10">
             {activeMedia ? (
@@ -93,7 +214,6 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
             )}
           </div>
 
-          {/* Carrusel de miniaturas flex flex-wrap gap-2 pb-1*/}
           {media.length > 1 && (
             <div className="flex flex-wrap gap-2 scrollbar-clean pb-1">
               {media.map((m, idx) => (
@@ -136,9 +256,8 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
           )}
         </div>
 
-        {/* Columna derecha: información */}
+        {/* Right column: info */}
         <div className="md:w-1/2 flex flex-col gap-5 min-h-0">
-          {/* Sticker */}
           {sticker && (
             <div className="flex items-center gap-3">
               <div className="relative w-16 h-16 shrink-0">
@@ -155,27 +274,18 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
             </div>
           )}
 
-          {/* Ubicación */}
           <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-white/50">
-              Ubicación
-            </span>
+            <span className="text-xs uppercase tracking-wider text-white/50">Ubicación</span>
             <p className="text-lg text-white">{locationLine}</p>
           </div>
 
-          {/* Usuario */}
           <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-white/50">
-              Compartido por
-            </span>
+            <span className="text-xs uppercase tracking-wider text-white/50">Compartido por</span>
             <p className="text-lg text-amber-300 font-semibold">{username}</p>
           </div>
 
-          {/* Fecha */}
           <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-white/50">
-              Fecha
-            </span>
+            <span className="text-xs uppercase tracking-wider text-white/50">Fecha</span>
             <p className="text-base text-white">
               {new Date(pin.created_at).toLocaleDateString("es-ES", {
                 day: "2-digit",
@@ -185,7 +295,6 @@ export default function PinModal({ detail, onClose }: PinModalProps) {
             </p>
           </div>
 
-          {/* Enlace a Google Maps */}
           <a
             href={mapsUrl}
             target="_blank"

@@ -93,7 +93,7 @@ const AuroraField = forwardRef<
   const sharedFieldClasses = `
     flex-1 min-w-0 bg-transparent outline-none border-none appearance-none
     ${textClasses} font-semibold text-white
-    placeholder:text-white/90 placeholder:font-semibold
+    placeholder:text-zinc-500 placeholder:font-semibold
     ${paddingY}
     disabled:opacity-50 disabled:cursor-not-allowed
     ${className}

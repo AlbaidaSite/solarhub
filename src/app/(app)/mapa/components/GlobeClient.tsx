@@ -531,7 +531,11 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
 
       {/* Modal de detalle del pin */}
       {modalDetail && (
-        <PinModal detail={modalDetail} onClose={() => setModalDetail(null)} />
+        <PinModal
+          detail={modalDetail}
+          onClose={() => setModalDetail(null)}
+          onDelete={() => { setModalDetail(null); router.refresh(); }}
+        />
       )}
 
       {clusterPopupPins && (
