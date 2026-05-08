@@ -15,6 +15,8 @@ type CommonProps = {
   label?: string;
   icon?: ReactNode;
   iconPosition?: IconPosition;
+  onIconClick?: () => void;
+  iconAriaLabel?: string;
   error?: string;
   containerClassName?: string;
   size?: FieldSize;
@@ -51,6 +53,8 @@ const AuroraField = forwardRef<
     label,
     icon,
     iconPosition = "right",
+    onIconClick,
+    iconAriaLabel,
     error,
     containerClassName = "",
     id,
@@ -100,6 +104,10 @@ const AuroraField = forwardRef<
   `;
 
   const handleIconClick = () => {
+    if (onIconClick) {
+      onIconClick();
+      return;
+    }
     const el = internalRef.current;
     if (!el) return;
     if (as === "select") {
@@ -130,7 +138,7 @@ const AuroraField = forwardRef<
       <div className="relative group/aurora">
         <div className="flex items-center gap-2">
           {resolvedIcon && iconPosition === "left" && (
-            <IconButton onActivate={handleIconClick}>{resolvedIcon}</IconButton>
+            <IconButton onActivate={handleIconClick} ariaLabel={iconAriaLabel}>{resolvedIcon}</IconButton>
           )}
 
           {as === "select" ? (
@@ -156,7 +164,7 @@ const AuroraField = forwardRef<
           )}
 
           {resolvedIcon && iconPosition === "right" && (
-            <IconButton onActivate={handleIconClick}>{resolvedIcon}</IconButton>
+            <IconButton onActivate={handleIconClick} ariaLabel={iconAriaLabel}>{resolvedIcon}</IconButton>
           )}
         </div>
 
@@ -186,18 +194,20 @@ export default AuroraField;
 function IconButton({
   onActivate,
   children,
+  ariaLabel,
 }: {
   onActivate: () => void;
   children: ReactNode;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
-      // mousedown.preventDefault() evita el cambio de foco antes de que onClick reenfoque al field
       onMouseDown={(e) => e.preventDefault()}
       onClick={onActivate}
-      tabIndex={-1}
-      aria-hidden
+      tabIndex={ariaLabel ? 0 : -1}
+      aria-hidden={ariaLabel ? undefined : true}
+      aria-label={ariaLabel}
       className="shrink-0 text-white group-focus-within/aurora:text-amber-300 transition-colors duration-200 cursor-pointer"
     >
       {children}
