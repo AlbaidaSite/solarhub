@@ -2,13 +2,18 @@
 
 import { useEffect, useRef } from "react";
 import Image from "next/image";
+import { getStorageUrl } from "@/lib/supabase/storage";
+import type { CromoOwnershipState } from "@/types/cromo";
+
+const LOCKED_URL = getStorageUrl("cromos/locked.webp");
 
 interface CromoCardProps {
   cromo: {
     id: number;
     name: string;
     front_thumb: string;
-    isLocked: boolean;
+    ownershipState: CromoOwnershipState;
+    isImageLocked: boolean;
     how_to: string | null;
   };
   onClick?: () => void;
@@ -18,9 +23,6 @@ interface VanillaTiltNode extends HTMLButtonElement {
   vanillaTilt?: { destroy: () => void };
 }
 
-// Placeholder genérico (4×3 px gris oscuro) que Next.js escala y difumina
-// mientras carga la imagen real. Mejora la percepción de carga sin
-// necesitar un blurDataURL por imagen.
 const GENERIC_BLUR_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAQAAAAlAOY/AAAAFklEQVR42mNk+M9Qz8DAwMjA8B8AB44C/4gtoeMAAAAASUVORK5CYII=";
 
@@ -54,7 +56,9 @@ export default function CromoCard({ cromo, onClick }: CromoCardProps) {
     };
   }, []);
 
-  const showHowToOverlay = cromo.isLocked && cromo.how_to;
+  const displayThumb  = cromo.isImageLocked ? LOCKED_URL : cromo.front_thumb;
+  const isGrayscale   = cromo.ownershipState !== "owned" && !cromo.isImageLocked;
+  const showHowToOverlay = cromo.ownershipState === "never_owned" && cromo.how_to;
 
   return (
     <button
@@ -66,11 +70,11 @@ export default function CromoCard({ cromo, onClick }: CromoCardProps) {
     >
       <div className="relative w-full aspect-1642/2223 rounded-xl overflow-hidden bg-zinc-900 transition-all duration-300 hover:shadow-[0_0_0_2px_#343742,0_0_12px_#E0E7FF]">
         <Image
-          src={cromo.front_thumb}
+          src={displayThumb}
           alt={cromo.name}
           fill
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
-          className="object-cover scale-[1.1] transition-opacity duration-300"
+          className={`object-cover scale-[1.1] transition-opacity duration-300${isGrayscale ? " grayscale" : ""}`}
           placeholder="blur"
           blurDataURL={GENERIC_BLUR_DATA_URL}
         />

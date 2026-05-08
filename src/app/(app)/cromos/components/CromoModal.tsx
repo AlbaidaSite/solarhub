@@ -4,8 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Repeat, X } from "lucide-react";
 import CornerButton from "@/components/ui/CornerButton";
+import { getStorageUrl } from "@/lib/supabase/storage";
 import TradeCromoPanel from "./TradeCromoPanel";
 import type { CromoDetail } from "@/types/cromo";
+
+const LOCKED_URL = getStorageUrl("cromos/locked.webp");
 
 interface CromoModalProps {
   cromo: CromoDetail;
@@ -24,6 +27,17 @@ export default function CromoModal({
   const [showTradePanel, setShowTradePanel] = useState(false);
   const [selectedUniqueIds, setSelectedUniqueIds] = useState<number[]>([]);
   const [tradeError, setTradeError] = useState<string | null>(null);
+
+  const displayFront = cromo.isImageLocked ? LOCKED_URL : cromo.front_img;
+  const displayThumb = cromo.isImageLocked ? LOCKED_URL : cromo.front_thumb;
+
+  // owned → full color + full info + can flip (even if previously owned)
+  // formerly_owned → grayscale + full info + can flip
+  // never_owned → grayscale + limited info (no description, no back)
+  // isImageLocked → show locked.webp without grayscale (nobody has owned it yet)
+  const isGrayscale  = cromo.ownershipState === "never_owned" && !cromo.isImageLocked;
+  const canFlip      = cromo.ownershipState !== "never_owned";
+  const showFullInfo = cromo.ownershipState !== "never_owned";
 
   const toggleUniqueSelected = (uniqueId: number) => {
     setTradeError(null);
@@ -45,11 +59,9 @@ export default function CromoModal({
     setShowTradePanel(true);
   };
 
-  // Tracking de touch para distinguir swipe horizontal de tap (flip)
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const swipedRef = useRef(false);
 
-  // Escape cierra, flechas navegan
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -60,9 +72,6 @@ export default function CromoModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, onPrev, onNext]);
 
-  // Bloquea el scroll del álbum mientras el modal esté abierto para que
-  // el fondo semitransparente muestre exactamente la posición actual del
-  // usuario. No se modifica scrollTop: el álbum queda congelado donde está.
   useEffect(() => {
     const main = document.querySelector("main");
     if (!main) return;
@@ -78,7 +87,7 @@ export default function CromoModal({
       swipedRef.current = false;
       return;
     }
-    if (cromo.isLocked) return; // los bloqueados no giran
+    if (!canFlip) return;
     setShowBack((s) => !s);
   };
 
@@ -95,7 +104,6 @@ export default function CromoModal({
     const dy = e.changedTouches[0].clientY - touchStart.current.y;
     touchStart.current = null;
 
-    // Solo swipes horizontales (>50 px y más horizontales que verticales)
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
       swipedRef.current = true;
       if (dx > 0 && onPrev) onPrev();
@@ -110,9 +118,6 @@ export default function CromoModal({
     >
       <button
         type="button"
-        // stopPropagation evita que el click burbujee al backdrop (outer div),
-        // cuyo onClick también es onClose: si no se para, se ejecutaría dos
-        // veces seguidas (dos `router.back()` ⇒ retrocedes dos pasos).
         onClick={(e) => {
           e.stopPropagation();
           onClose();
@@ -130,7 +135,6 @@ export default function CromoModal({
         {/* Izquierda: imagen + flechas de navegación */}
         <div className="md:w-1/2 flex items-center justify-center shrink-0 min-h-0">
           <div className="relative">
-            {/* Flecha anterior: en mobile encima del cromo (esquina sup. izq.); en desktop al lateral izquierdo */}
             {onPrev && (
               <button
                 type="button"
@@ -144,17 +148,15 @@ export default function CromoModal({
               </button>
             )}
 
-            {/* Botón imagen con flip 3D */}
             <button
               type="button"
               onClick={handleImageClick}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
               aria-label={showBack ? "Mostrar frente" : "Mostrar reverso"}
-              className="group relative aspect-1642/2223 w-auto h-[min(60vh,calc(28rem*2223/1642))] md:h-[min(calc(100vh-10rem),calc(28rem*2223/1642))] cursor-pointer bg-transparent border-0 p-0 perspective-distant"
+              className="group relative aspect-1642/2223 w-auto h-[min(60vh,calc(28rem*2223/1642))] md:h-[min(calc(100vh-10rem),calc(28rem*2223/1642))] max-h-125 cursor-pointer bg-transparent border-0 p-0 perspective-distant"
             >
-              {/* Icono Repeat al hacer hover (oculto en cromos bloqueados ya que no giran) */}
-              {!cromo.isLocked && (
+              {canFlip && (
                 <span
                   aria-hidden
                   className="pointer-events-none absolute -top-4.5 left-1/2 -translate-x-1/2 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"
@@ -168,29 +170,28 @@ export default function CromoModal({
                   showBack ? "rotate-y-180" : ""
                 }`}
               >
-                {/* Cara frontal: thumb apilada debajo del full para precarga progresiva */}
+                {/* Cara frontal */}
                 <div className="absolute inset-0 backface-hidden rounded-xl overflow-hidden bg-zinc-900">
                   <Image
-                    src={cromo.front_thumb}
+                    src={displayThumb}
                     alt=""
                     fill
                     sizes="(max-width: 768px) 80vw, 40vw"
-                    className="object-contain"
+                    className={`object-contain${isGrayscale ? " grayscale" : ""}`}
                     priority
                     aria-hidden
                   />
                   <Image
-                    src={cromo.front_img}
+                    src={displayFront}
                     alt={cromo.name}
                     fill
                     sizes="(max-width: 768px) 80vw, 40vw"
-                    className="object-contain"
+                    className={`object-contain${isGrayscale ? " grayscale" : ""}`}
                     priority
                   />
                 </div>
-                {/* Cara reversa: solo se monta si el cromo no está bloqueado, así
-                    el back_img real ni siquiera se solicita al servidor */}
-                {!cromo.isLocked && (
+                {/* Cara reversa: solo si puede girar */}
+                {canFlip && (
                   <div className="absolute inset-0 backface-hidden rotate-y-180 rounded-xl overflow-hidden bg-zinc-900">
                     <Image
                       src={cromo.back_img}
@@ -204,7 +205,6 @@ export default function CromoModal({
               </div>
             </button>
 
-            {/* Flecha siguiente: en mobile encima del cromo (esquina sup. der.); en desktop al lateral derecho */}
             {onNext && (
               <button
                 type="button"
@@ -220,27 +220,22 @@ export default function CromoModal({
           </div>
         </div>
 
-        {/* Derecha: en desktop tiene su propio scroll independiente; en mobile fluye dentro del scroll del modal */}
+        {/* Derecha: información */}
         <div className="md:w-1/2 md:overflow-y-auto md:pr-2 scrollbar-clean flex flex-col gap-6">
           {/* Bloque 1 */}
           <div className="flex gap-4">
             <div className="flex-1 flex flex-col gap-4">
-              {/* Nombre: "Bloqueado" si locked, real si desbloqueado */}
               <h1 className="text-3xl font-bold text-white">
-                {cromo.isLocked ? "Bloqueado" : cromo.name}
+                {cromo.isImageLocked ? "Bloqueado" : cromo.name}
               </h1>
 
-              {/* Descripción: texto fijo si locked, real si desbloqueado */}
-              {cromo.isLocked ? (
-                <p className="text-zinc-400 italic">
-                  Este cromo aún no ha sido desbloqueado.
-                </p>
-              ) : cromo.description ? (
+              {/* Descripción: solo si showFullInfo */}
+              {showFullInfo && cromo.description && (
                 <p className="text-zinc-200 leading-relaxed">{cromo.description}</p>
-              ) : null}
+              )}
 
-              {/* Artistas: solo cuando está desbloqueado */}
-              {!cromo.isLocked && cromo.artists.length > 0 && (
+              {/* Artistas: solo si showFullInfo */}
+              {showFullInfo && cromo.artists.length > 0 && (
                 <p className="text-white">
                   <span className="font-bold underline mr-2">
                     {cromo.artists.length === 1 ? "Artist :" : "Artists :"}
@@ -304,21 +299,24 @@ export default function CromoModal({
               </p>
             )}
 
-            {/* Campos de posesión / intercambio: solo desbloqueado */}
-            {!cromo.isLocked && (
+            {/* Campos de posesión / intercambio: owned y formerly_owned */}
+            {showFullInfo && (
               <>
-                <p className="text-white">
-                  <span className="font-bold underline mr-2">Conseguido el :</span>
-                  <span className="text-zinc-300">DD/MM/YYYY</span>
-                </p>
+                {cromo.firstAcquiredAt && (
+                  <p className="text-white">
+                    <span className="font-bold underline mr-2">Conseguido el :</span>
+                    <span className="text-zinc-300">
+                      {new Date(cromo.firstAcquiredAt).toLocaleDateString("es-ES")}
+                    </span>
+                  </p>
+                )}
 
-                {/* Copias: lista seleccionable de los copy_numbers que el
-                    usuario posee actualmente. Se usa para elegir cuáles
-                    enviar al intercambio. Si no posee ninguno, se muestra
-                    el placeholder genérico. */}
                 {cromo.userOwnedUniques.length > 0 ? (
                   <div className="flex flex-col gap-2">
-                    <span className="font-bold underline text-white">Copias :</span>
+                    <p className="text-white">
+                      <span className="font-bold underline mr-2">Copias :</span>
+                      <span className="text-zinc-300">{cromo.userOwnedUniques.length} / {cromo.copies}</span>
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {cromo.userOwnedUniques.map((u) => {
                         const sel = selectedUniqueIds.includes(u.uniqueId);
@@ -350,7 +348,6 @@ export default function CromoModal({
                   <p className="text-red-400 text-sm">{tradeError}</p>
                 )}
 
-                {/* Intercambiar: solo si el usuario tiene al menos un unique de este cromo */}
                 {cromo.userOwnedUniques.length > 0 && (
                   <div className="self-end mt-4">
                     <CornerButton
@@ -367,9 +364,6 @@ export default function CromoModal({
         </div>
       </div>
 
-      {/* Panel de intercambio: overlay sobre el modal.
-          onClick stopPropagation evita que los clicks dentro del panel
-          burbujeen al backdrop del modal (que tiene onClick={onClose}). */}
       {showTradePanel && (
         <div
           className="absolute inset-0 z-50 bg-black/90 backdrop-blur-sm p-8 overflow-y-auto scrollbar-clean"

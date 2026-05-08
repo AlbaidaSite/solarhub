@@ -2,11 +2,9 @@ import "server-only";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStorageUrl, getThumbUrl } from "@/lib/supabase/storage";
-import type { CromoDetail, OwnedUnique } from "@/types/cromo";
+import type { CromoDetail, CromoOwnershipState, OwnedUnique } from "@/types/cromo";
 import { buildIdSlug, parseIdSlug, slugify } from "./slug";
 import { sortCromosDefault } from "./sort";
-
-const LOCKED_IMG_PATH = "cromos/locked.webp";
 
 interface CromoQueryRow {
   id: number;
@@ -31,30 +29,48 @@ const CROMO_SELECT = `id, name, number, variant, description, copies, how_to, ho
   category:category_id(id, name, icon_path, order_number),
   cromo_artist(artist:artist_id(name, url))`;
 
-// ─── Reglas de bloqueo (isLocked) ───────────────────────────────────────────
-function computeIsLocked(
-  labels: { has_owners: boolean; hide_til_registered: boolean; for_loukou: boolean },
-  userOwnsCromo: boolean,
-  isUserLoukou: boolean,
-): boolean {
-  if (userOwnsCromo) return false;
-  if (!labels.has_owners) return true;
-  if (labels.hide_til_registered) return true;
-  if (labels.for_loukou && !isUserLoukou) return true;
-  return false;
+const LOCKED_IMG_PATH = "cromos/locked.webp";
+
+// ─── Ownership state ─────────────────────────────────────────────────────────
+
+function computeOwnershipState(
+  currentlyOwned: OwnedUnique[],
+  hasEverOwned: boolean,
+): CromoOwnershipState {
+  if (currentlyOwned.length > 0) return "owned";
+  if (hasEverOwned) return "formerly_owned";
+  return "never_owned";
 }
 
-// ─── Mapeo de fila DB → CromoDetail ──────────────────────────────────────────
+// ─── Visibility in album ─────────────────────────────────────────────────────
+
+function isVisibleInAlbum(
+  labels: { hide_til_registered: boolean; for_loukou: boolean },
+  hasEverOwned: boolean,
+  isUserLoukou: boolean,
+  isUserSuperuser: boolean,
+): boolean {
+  if (isUserSuperuser) return true;
+  if (hasEverOwned) return true;
+  if (labels.hide_til_registered) return false;
+  if (labels.for_loukou && !isUserLoukou) return false;
+  return true;
+}
+
+// ─── Map row → CromoDetail ───────────────────────────────────────────────────
+
 function mapToDetail(
   c: CromoQueryRow,
-  ownedUniques: OwnedUnique[],  // uniques que el usuario posee ACTUALMENTE de este cromo
-  isUserLoukou: boolean,
+  ownedUniques: OwnedUnique[],
+  everOwnedEntry: { firstAcquiredAt: string } | undefined,
 ): CromoDetail {
   const labels = c.cromo_labels!;
-  const userOwnsCromo = ownedUniques.length > 0;
-  const isLocked = computeIsLocked(labels, userOwnsCromo, isUserLoukou);
-  const realFrontPath = isLocked ? LOCKED_IMG_PATH : c.front_img;
-  const realBackPath  = isLocked ? LOCKED_IMG_PATH : c.back_img;
+  const hasEverOwned = everOwnedEntry !== undefined;
+  // isImageLocked=true cuando has_owners=false: los componentes mostrarán
+  // locked.webp en lugar de las URLs reales, que se almacenan igual para
+  // que el modo dios (superusuario) pueda recuperarlas.
+  const isImageLocked = !labels.has_owners;
+
   return {
     id: c.id,
     name: c.name,
@@ -64,11 +80,13 @@ function mapToDetail(
     copies: c.copies,
     how_to: c.how_to,
     how_to_extended: c.how_to_extended,
-    isLocked,
+    ownershipState: computeOwnershipState(ownedUniques, hasEverOwned),
+    isImageLocked,
+    firstAcquiredAt: everOwnedEntry?.firstAcquiredAt ?? null,
     userOwnedUniques: ownedUniques,
-    front_img: getStorageUrl(realFrontPath),
-    front_thumb: getThumbUrl(realFrontPath),
-    back_img: getStorageUrl(realBackPath),
+    front_img: getStorageUrl(c.front_img),
+    front_thumb: getThumbUrl(c.front_img),
+    back_img: getStorageUrl(c.back_img),
     rarity: c.rarity
       ? { id: c.rarity.id, name: c.rarity.name, icon_path: getStorageUrl(c.rarity.icon_path) }
       : null,
@@ -86,23 +104,22 @@ function mapToDetail(
   };
 }
 
-// ─── Visibilidad en álbum ────────────────────────────────────────────────────
-function isVisibleInAlbum(
-  c: CromoQueryRow,
-  userOwnsCromo: boolean,
-  isUserLoukou: boolean,
-): boolean {
-  const labels = c.cromo_labels;
-  if (!labels) return false;
-  if (userOwnsCromo) return true;
-  if (labels.hide_til_registered) return false;
-  if (labels.for_loukou && !isUserLoukou) return false;
-  return true;
+// ─── DB queries ───────────────────────────────────────────────────────────────
+
+async function fetchRawCromoRows(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+): Promise<CromoQueryRow[]> {
+  const { data, error } = await supabase
+    .from("cromo")
+    .select(CROMO_SELECT)
+    .order("number", { ascending: true })
+    .order("variant", { ascending: true });
+
+  if (error) throw new Error(`Error cargando cromos: ${error.message}`);
+  return (data ?? []) as unknown as CromoQueryRow[];
 }
 
-// ─── Uniques que el usuario POSEE ACTUALMENTE por cromo ──────────────────────
-// Retorna Map<cromo_id, OwnedUnique[]> para poder popular userOwnedUniques
-// sin una sub-query por cada cromo.
+// Retorna Map<cromo_id, OwnedUnique[]> — copias que el usuario posee ACTUALMENTE.
 async function fetchUserOwnedUniquesMap(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   userId: string,
@@ -126,38 +143,72 @@ async function fetchUserOwnedUniquesMap(
   return map;
 }
 
-// ─── Fetch base (todas las filas, sin filtrar) ────────────────────────────────
-async function fetchRawCromoRows(
+// Retorna Map<cromo_id, { firstAcquiredAt }> — historial completo del usuario,
+// con la fecha de adquisición más antigua por cromo (unique_ownership.date_acquired).
+async function fetchUserEverOwnedMap(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-): Promise<CromoQueryRow[]> {
-  const { data, error } = await supabase
-    .from("cromo")
-    .select(CROMO_SELECT)
-    .order("number", { ascending: true })
-    .order("variant", { ascending: true });
+  userId: string,
+): Promise<Map<number, { firstAcquiredAt: string }>> {
+  const { data } = await supabase
+    .from("unique_ownership")
+    .select("date_acquired, unique_cromo!inner(cromo_id)")
+    .eq("user_id", userId)
+    .order("date_acquired", { ascending: true });
 
-  if (error) throw new Error(`Error cargando cromos: ${error.message}`);
-  return (data ?? []) as unknown as CromoQueryRow[];
+  const map = new Map<number, { firstAcquiredAt: string }>();
+  for (const row of (data ?? []) as unknown as Array<{
+    date_acquired: string | null;
+    unique_cromo: { cromo_id: number };
+  }>) {
+    const cromoId = row.unique_cromo?.cromo_id;
+    if (cromoId != null && !map.has(cromoId) && row.date_acquired) {
+      map.set(cromoId, { firstAcquiredAt: row.date_acquired });
+    }
+  }
+  return map;
 }
 
-// ─── API pública ──────────────────────────────────────────────────────────────
+// ─── Shared fetch helper ──────────────────────────────────────────────────────
 
-export async function fetchAllCromos(): Promise<CromoDetail[]> {
+async function fetchAlbumContext() {
   const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const userId = user?.id;
 
-  const [rows, ownedMap, loukou] = await Promise.all([
+  const [rows, ownedMap, everOwnedMap, loukou, superuser] = await Promise.all([
     fetchRawCromoRows(supabase),
     userId
       ? fetchUserOwnedUniquesMap(supabase, userId)
       : Promise.resolve(new Map<number, OwnedUnique[]>()),
-    userId ? supabase.rpc("is_loukou").then((r) => Boolean(r.data)) : Promise.resolve(false),
+    userId
+      ? fetchUserEverOwnedMap(supabase, userId)
+      : Promise.resolve(new Map<number, { firstAcquiredAt: string }>()),
+    userId
+      ? supabase.rpc("is_loukou").then((r) => Boolean(r.data))
+      : Promise.resolve(false),
+    userId
+      ? supabase.rpc("is_superuser").then((r) => Boolean(r.data))
+      : Promise.resolve(false),
   ]);
 
-  return rows
-    .filter((c) => isVisibleInAlbum(c, ownedMap.has(c.id), loukou))
-    .map((c) => mapToDetail(c, ownedMap.get(c.id) ?? [], loukou));
+  return { rows, ownedMap, everOwnedMap, loukou, superuser };
+}
+
+// ─── API pública ──────────────────────────────────────────────────────────────
+
+export async function fetchAllCromos(): Promise<{ cromos: CromoDetail[]; isSuperuser: boolean }> {
+  const { rows, ownedMap, everOwnedMap, loukou, superuser } = await fetchAlbumContext();
+
+  const cromos = rows
+    .filter((c) => {
+      if (!c.cromo_labels) return false;
+      return isVisibleInAlbum(c.cromo_labels, everOwnedMap.has(c.id), loukou, superuser);
+    })
+    .map((c) => mapToDetail(c, ownedMap.get(c.id) ?? [], everOwnedMap.get(c.id)));
+
+  return { cromos, isSuperuser: superuser };
 }
 
 export interface CromoNavigation {
@@ -172,43 +223,32 @@ export async function fetchCromoWithNeighbors(
   const parsed = parseIdSlug(idSlug);
   if (!parsed) return null;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id;
-
-  const [rows, ownedMap, loukou] = await Promise.all([
-    fetchRawCromoRows(supabase),
-    userId
-      ? fetchUserOwnedUniquesMap(supabase, userId)
-      : Promise.resolve(new Map<number, OwnedUnique[]>()),
-    userId ? supabase.rpc("is_loukou").then((r) => Boolean(r.data)) : Promise.resolve(false),
-  ]);
+  const { rows, ownedMap, everOwnedMap, loukou, superuser } = await fetchAlbumContext();
 
   const albumList = sortCromosDefault(
     rows
-      .filter((c) => isVisibleInAlbum(c, ownedMap.has(c.id), loukou))
-      .map((c) => mapToDetail(c, ownedMap.get(c.id) ?? [], loukou)),
+      .filter((c) => {
+        if (!c.cromo_labels) return false;
+        return isVisibleInAlbum(c.cromo_labels, everOwnedMap.has(c.id), loukou, superuser);
+      })
+      .map((c) => mapToDetail(c, ownedMap.get(c.id) ?? [], everOwnedMap.get(c.id))),
   );
 
   const albumIdx = albumList.findIndex((c) => c.id === parsed.id);
+  if (albumIdx < 0) return null;
 
-  if (albumIdx >= 0) {
-    const cromo = albumList[albumIdx];
-    if (slugify(cromo.name) !== parsed.slug) return null;
-    return {
-      cromo,
-      prev: albumIdx > 0
+  const cromo = albumList[albumIdx];
+  if (slugify(cromo.name) !== parsed.slug) return null;
+
+  return {
+    cromo,
+    prev:
+      albumIdx > 0
         ? { idSlug: buildIdSlug(albumList[albumIdx - 1].id, albumList[albumIdx - 1].name) }
         : null,
-      next: albumIdx < albumList.length - 1
+    next:
+      albumIdx < albumList.length - 1
         ? { idSlug: buildIdSlug(albumList[albumIdx + 1].id, albumList[albumIdx + 1].name) }
         : null,
-    };
-  }
-
-  const rawRow = rows.find((c) => c.id === parsed.id);
-  if (!rawRow || !rawRow.cromo_labels) return null;
-  const cromo = mapToDetail(rawRow, ownedMap.get(rawRow.id) ?? [], loukou);
-  if (slugify(cromo.name) !== parsed.slug) return null;
-  return { cromo, prev: null, next: null };
+  };
 }

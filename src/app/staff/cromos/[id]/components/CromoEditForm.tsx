@@ -16,6 +16,7 @@ interface InitialValues {
   name: string;
   description: string;
   number: string;
+  variant: string;
   categoryId: string;
   rarityId: string;
   howTo: string;
@@ -70,6 +71,7 @@ export default function CromoEditForm({
   const [backImage, setBackImage]     = useState<File | null>(null);
   const [description, setDescription] = useState(initial.description);
   const [number, setNumber]           = useState(initial.number);
+  const [variant, setVariant]         = useState(initial.variant);
   const [categoryId, setCategoryId]   = useState(initial.categoryId);
   const [rarityId, setRarityId]       = useState(initial.rarityId);
   const [howTo, setHowTo]             = useState(initial.howTo);
@@ -141,6 +143,7 @@ export default function CromoEditForm({
     fd.append("name", name.trim());
     fd.append("description", description);
     fd.append("number", number);
+    fd.append("variant", variant);
     fd.append("categoryId", categoryId);
     fd.append("rarityId", rarityId);
     fd.append("howTo", howTo);
@@ -193,9 +196,13 @@ export default function CromoEditForm({
             rows={3} className={`${FIELD_CLASS} resize-y`} />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Field label="Número">
             <input type="number" min={1} value={number} onChange={(e) => setNumber(e.target.value)} className={FIELD_CLASS} />
+          </Field>
+
+          <Field label="Variante">
+            <input type="number" min={0} value={variant} onChange={(e) => setVariant(e.target.value)} className={FIELD_CLASS} />
           </Field>
 
           <Field label="Categoría">

@@ -21,8 +21,9 @@ export default async function Album() {
   const supabase = await createSupabaseServerClient();
 
   let cromos: CromoDetail[];
+  let isSuperuser: boolean;
   try {
-    cromos = await fetchAllCromos();
+    ({ cromos, isSuperuser } = await fetchAllCromos());
   } catch (err) {
     return <p className="p-4 text-red-500">{(err as Error).message}</p>;
   }
@@ -61,5 +62,12 @@ export default async function Album() {
     icon_path: getStorageUrl(r.icon_path),
   }));
 
-  return <AlbumGrid cromos={cromos} categories={categories} rarities={rarities} />;
+  return (
+    <AlbumGrid
+      cromos={cromos}
+      categories={categories}
+      rarities={rarities}
+      isSuperuser={isSuperuser}
+    />
+  );
 }

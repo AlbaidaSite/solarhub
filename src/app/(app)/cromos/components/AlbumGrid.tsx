@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Eye, EyeClosed } from "lucide-react";
 import AlbumFilters from "./AlbumFilters";
 import CromoCard from "./CromoCard";
 import CromoModal from "./CromoModal";
-import { buildCromoPath } from "../lib/slug";
 import { compareCromos } from "../lib/sort";
 import type { Category, CromoDetail, Rarity, SortBy } from "@/types/cromo";
 
@@ -12,60 +12,83 @@ interface AlbumGridProps {
   cromos: CromoDetail[];
   categories: Category[];
   rarities: Rarity[];
+  isSuperuser: boolean;
 }
 
-// Quita acentos y pasa a minúsculas — para búsquedas tolerantes a mayúsculas y diacríticos.
 function normalize(text: string): string {
   return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-export default function AlbumGrid({ cromos, categories, rarities }: AlbumGridProps) {
+// En modo dios (showSuperAll) todos los cromos se muestran a color con imagen real.
+function toGodModeCromo(c: CromoDetail): CromoDetail {
+  return { ...c, ownershipState: "owned", isImageLocked: false };
+}
+
+export default function AlbumGrid({ cromos, categories, rarities, isSuperuser }: AlbumGridProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [selectedRarityId, setSelectedRarityId] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("number");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  // showSuperAll: solo accesible para superusuarios — muestra todo a color
+  const [showSuperAll, setShowSuperAll] = useState(false);
 
   const visibleCromos = useMemo(() => {
     const normalizedQuery = normalize(searchQuery.trim());
     const filtered = cromos.filter((c) => {
+      if (!showAll && !showSuperAll && c.ownershipState === "never_owned") return false;
       if (selectedCategoryId !== null && c.category?.id !== selectedCategoryId) return false;
       if (selectedRarityId !== null && c.rarity?.id !== selectedRarityId) return false;
       if (normalizedQuery && !normalize(c.name).includes(normalizedQuery)) return false;
       return true;
     });
 
-    // Si hay filtro de rareza activo, forzamos rareza > categoría > número
-    // (idéntico al orden `rarity_asc`).
     const effectiveSort: SortBy = selectedRarityId !== null ? "rarity_asc" : sortBy;
     return filtered.sort((a, b) => compareCromos(a, b, effectiveSort));
-  }, [cromos, selectedCategoryId, selectedRarityId, sortBy, searchQuery]);
+  }, [cromos, selectedCategoryId, selectedRarityId, sortBy, searchQuery, showAll, showSuperAll]);
 
-  // Resetear índice seleccionado cuando cambian los filtros para que no
-  // apunte a un cromo que ya no está en la lista visible.
-  const handleCategoryChange = (id: number | null) => {
-    setSelectedCategoryId(id);
-    setSelectedIndex(null);
-  };
-  const handleRarityChange = (id: number | null) => {
-    setSelectedRarityId(id);
-    setSelectedIndex(null);
-  };
-  const handleSortChange = (sort: SortBy) => {
-    setSortBy(sort);
-    setSelectedIndex(null);
-  };
-  const handleSearchChange = (query: string) => {
-    setSearchQuery(query);
-    setSelectedIndex(null);
-  };
+  const handleCategoryChange = (id: number | null) => { setSelectedCategoryId(id); setSelectedIndex(null); };
+  const handleRarityChange   = (id: number | null) => { setSelectedRarityId(id);   setSelectedIndex(null); };
+  const handleSortChange     = (sort: SortBy)       => { setSortBy(sort);           setSelectedIndex(null); };
+  const handleSearchChange   = (query: string)      => { setSearchQuery(query);     setSelectedIndex(null); };
+  const handleShowAllToggle  = ()                   => { setShowAll((s) => !s);     setSelectedIndex(null); };
+  const handleSuperAllToggle = ()                   => { setShowSuperAll((s) => !s); setSelectedIndex(null); };
 
   const selected = selectedIndex !== null ? visibleCromos[selectedIndex] : null;
-  const hasPrev = selectedIndex !== null && selectedIndex > 0;
-  const hasNext = selectedIndex !== null && selectedIndex < visibleCromos.length - 1;
+  const hasPrev  = selectedIndex !== null && selectedIndex > 0;
+  const hasNext  = selectedIndex !== null && selectedIndex < visibleCromos.length - 1;
+
+  // Aplica la transformación dios-modo al cromo antes de renderizarlo
+  const display = (c: CromoDetail) => showSuperAll ? toGodModeCromo(c) : c;
 
   return (
     <>
+      {/* Botones izquierda desktop: simétricos a IntercambiosButton top-right en page.tsx */}
+      <div className="hidden nav:flex flex-col items-center absolute top-0 left-0 z-10">
+        <button
+          type="button"
+          onClick={handleShowAllToggle}
+          aria-label={showAll ? "Mostrar solo mis cromos" : "Mostrar todos los cromos"}
+          className="text-white hover:text-amber-300 transition-colors p-2 cursor-pointer"
+        >
+          {showAll || showSuperAll ? <EyeClosed size={32} /> : <Eye size={32} />}
+        </button>
+
+        {isSuperuser && (
+          <button
+            type="button"
+            onClick={handleSuperAllToggle}
+            aria-label={showSuperAll ? "Desactivar vista de administrador" : "Ver todos los cromos (administrador)"}
+            className={`transition-colors -mt-2 cursor-pointer ${
+              showSuperAll ? "text-amber-400 hover:text-amber-300" : "text-amber-600 hover:text-amber-400"
+            }`}
+          >
+            {showSuperAll ? <EyeClosed size={32} /> : <Eye size={32} />}
+          </button>
+        )}
+      </div>
+
       <AlbumFilters
         categories={categories}
         rarities={rarities}
@@ -78,23 +101,35 @@ export default function AlbumGrid({ cromos, categories, rarities }: AlbumGridPro
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
         isModalOpen={selected !== null}
+        showAll={showAll}
+        onShowAllToggle={handleShowAllToggle}
+        isSuperuser={isSuperuser}
+        showSuperAll={showSuperAll}
+        onShowSuperAllToggle={handleSuperAllToggle}
       />
 
-      <div className="grid justify-center grid-cols-[repeat(auto-fill,minmax(130px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-6 p-4">
-        {visibleCromos.map((cromo, i) => (
-          <CromoCard
-            key={`${cromo.number}-${cromo.variant}`}
-            cromo={cromo}
-            onClick={() => setSelectedIndex(i)}
-          />
-        ))}
-      </div>
+      {visibleCromos.length === 0 && !showAll && !showSuperAll ? (
+        <p className="text-center text-zinc-400 px-8 py-16 max-w-md mx-auto leading-relaxed">
+          Ahora mismo no tienes ningún cromo, registra alguno pulsando el botón con círculos de arriba a la derecha o mira cómo conseguirlos pulsando el botón{" "}
+          <Eye size={14} className="inline-block align-middle" />{" "}
+          de arriba a la izquierda.
+        </p>
+      ) : (
+        <div className="grid justify-center grid-cols-[repeat(auto-fill,minmax(130px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-6 p-4">
+          {visibleCromos.map((cromo, i) => (
+            <CromoCard
+              key={`${cromo.number}-${cromo.variant}`}
+              cromo={display(cromo)}
+              onClick={() => setSelectedIndex(i)}
+            />
+          ))}
+        </div>
+      )}
 
       {selected && (
         <CromoModal
-          // key fuerza remount al cambiar de cromo: resetea showBack y la transición
           key={selected.id}
-          cromo={selected}
+          cromo={display(selected)}
           onClose={() => setSelectedIndex(null)}
           onPrev={hasPrev ? () => setSelectedIndex((i) => (i ?? 0) - 1) : undefined}
           onNext={hasNext ? () => setSelectedIndex((i) => (i ?? 0) + 1) : undefined}

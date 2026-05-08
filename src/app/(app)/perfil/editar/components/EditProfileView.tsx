@@ -7,7 +7,7 @@ import {
   Mail,
   AtSign,
   Eye,
-  EyeOff,
+  EyeClosed,
   TriangleAlert,
 } from "lucide-react";
 
@@ -507,7 +507,7 @@ function EyeToggle({
       aria-label={on ? "Ocultar contraseña" : "Mostrar contraseña"}
       className="cursor-pointer hover:text-amber-300 transition-colors"
     >
-      {on ? <EyeOff size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
+      {on ? <EyeClosed size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
     </button>
   );
 }

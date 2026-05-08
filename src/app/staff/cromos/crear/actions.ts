@@ -161,17 +161,9 @@ export async function createCromoAction(formData: FormData): Promise<CreateCromo
   if (backImage.type !== "image/webp")
     return { ok: false, error: "La imagen del dorso debe ser .webp." };
 
-  // ── Calcular variant: max(variant) + 1 para (category, number) ────────────
-  const { data: variantRows, error: variantErr } = await supabase
-    .from("cromo")
-    .select("variant")
-    .eq("category_id", categoryId)
-    .eq("number", numberRaw)
-    .order("variant", { ascending: false })
-    .limit(1);
-  if (variantErr) return { ok: false, error: variantErr.message };
-  const variant =
-    variantRows && variantRows.length > 0 ? variantRows[0].variant + 1 : 0;
+  const variantRaw = Number(formData.get("variant"));
+  if (!Number.isInteger(variantRaw) || variantRaw < 0)
+    return { ok: false, error: "Variante inválida." };
 
   // ── Subir imágenes a storage ──────────────────────────────────────────────
   const baseName = `${slugify(name) || "cromo"}-${Date.now()}`;
@@ -223,7 +215,7 @@ export async function createCromoAction(formData: FormData): Promise<CreateCromo
       back_img: backPath,
       description,
       number: numberRaw,
-      variant,
+      variant: variantRaw,
       copies: copiesRaw,
       how_to: howTo,
       how_to_extended: howToExtended,

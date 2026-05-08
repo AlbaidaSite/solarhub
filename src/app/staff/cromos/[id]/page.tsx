@@ -95,6 +95,7 @@ export default async function StaffEditCromoPage({
           name: cromo.name,
           description: cromo.description ?? "",
           number: String(cromo.number),
+          variant: String(cromo.variant),
           categoryId: String(cromo.category?.id ?? ""),
           rarityId: String(cromo.rarity?.id ?? ""),
           howTo: cromo.how_to ?? "",
