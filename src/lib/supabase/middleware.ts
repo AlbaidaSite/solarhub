@@ -52,11 +52,29 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     return NextResponse.redirect(url);
   }
 
-  if (user && publicRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    url.search = '';
-    return NextResponse.redirect(url);
+  if (user) {
+    // Check if account is active
+    const { data: creds } = await supabase
+      .from('credentials')
+      .select('is_active')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    const isActive = creds?.is_active ?? true;
+
+    if (!isActive && !publicRoute) {
+      // Deactivated users are pushed back to /login; login form handles the error message
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
+
+    if (isActive && publicRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

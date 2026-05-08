@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -8,11 +8,13 @@ import {
   AtSign,
   Eye,
   EyeOff,
+  TriangleAlert,
 } from "lucide-react";
 
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
 import { supabase } from "@/lib/supabase/client";
+import { deactivateAccountAction } from "../../actions";
 
 type Section = "email" | "username" | "password";
 
@@ -30,6 +32,8 @@ function validatePassword(pw: string): string[] {
   return errors;
 }
 
+type DeactivateStep = "confirm1" | "confirm2";
+
 export default function EditProfileView({
   currentEmail,
   currentUsername,
@@ -38,6 +42,14 @@ export default function EditProfileView({
   currentUsername: string;
 }) {
   const [section, setSection] = useState<Section>("email");
+  const [deactivateStep, setDeactivateStep] = useState<DeactivateStep | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const handleDeactivate = () => {
+    startTransition(async () => {
+      await deactivateAccountAction();
+    });
+  };
 
   return (
     <div className="w-full flex flex-col items-center">
@@ -76,6 +88,89 @@ export default function EditProfileView({
       )}
       {section === "password" && (
         <PasswordForm key="password" currentEmail={currentEmail} />
+      )}
+
+      {/* Deactivation trigger */}
+      <div className="mt-16 w-full max-w-sm border-t border-white/10 pt-8 flex flex-col items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setDeactivateStep("confirm1")}
+          className="flex items-center gap-2 text-sm text-white/30 hover:text-red-400 transition-colors cursor-pointer"
+        >
+          <TriangleAlert size={14} />
+          Desactivar cuenta
+        </button>
+      </div>
+
+      {/* Deactivation modal */}
+      {deactivateStep && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => !isPending && setDeactivateStep(null)}
+        >
+          <div
+            className="bg-zinc-900 border border-white/15 rounded-2xl p-6 max-w-sm w-full mx-4 flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {deactivateStep === "confirm1" ? (
+              <>
+                <p className="text-white font-semibold text-center">
+                  Desactivar cuenta
+                </p>
+                <p className="text-white/70 text-sm text-center leading-relaxed">
+                  Esta acción <strong className="text-white">solo desactiva tu cuenta</strong>, no la elimina.
+                  Tus datos se conservarán. Si deseas borrar tu cuenta permanentemente,
+                  deberás solicitarlo a un administrador en persona.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDeactivateStep("confirm2")}
+                    className="flex-1 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors cursor-pointer"
+                  >
+                    Entiendo, continuar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeactivateStep(null)}
+                    className="flex-1 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-white font-semibold text-center">
+                  ¿Estás seguro?
+                </p>
+                <p className="text-white/70 text-sm text-center leading-relaxed">
+                  Tu sesión se cerrará y no podrás acceder a la plataforma.
+                  Para reactivar la cuenta, tendrás que iniciar sesión de nuevo
+                  y abrir una nueva solicitud de registro con el mismo correo electrónico.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDeactivateStep(null)}
+                    disabled={isPending}
+                    className="flex-1 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    No, cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeactivate}
+                    disabled={isPending}
+                    className="flex-1 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isPending ? "Desactivando…" : "Sí, desactivar"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
