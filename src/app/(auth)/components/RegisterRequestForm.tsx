@@ -348,16 +348,9 @@ export default function RegisterRequestForm() {
         type={showPassword ? "text" : "password"}
         name="password"
         placeholder="Contraseña"
-        icon={
-          <button
-            type="button"
-            onClick={() => setShowPassword((s) => !s)}
-            aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-            className="cursor-pointer hover:text-amber-300 transition-colors"
-          >
-            {showPassword ? <EyeOff size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
-          </button>
-        }
+        icon={showPassword ? <EyeOff size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
+        onIconClick={() => setShowPassword((s) => !s)}
+        iconAriaLabel={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
         autoComplete="new-password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
@@ -368,16 +361,9 @@ export default function RegisterRequestForm() {
         type={showConfirmPassword ? "text" : "password"}
         name="confirmPassword"
         placeholder="Repetir contraseña"
-        icon={
-          <button
-            type="button"
-            onClick={() => setShowConfirmPassword((s) => !s)}
-            aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-            className="cursor-pointer hover:text-amber-300 transition-colors"
-          >
-            {showConfirmPassword ? <EyeOff size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
-          </button>
-        }
+        icon={showConfirmPassword ? <EyeOff size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
+        onIconClick={() => setShowConfirmPassword((s) => !s)}
+        iconAriaLabel={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
         autoComplete="new-password"
         value={confirmPassword}
         onChange={(e) => setConfirmPassword(e.target.value)}
