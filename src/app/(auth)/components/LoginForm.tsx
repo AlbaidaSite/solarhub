@@ -37,12 +37,26 @@ export default function LoginForm() {
       email = lookup;
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { data: { user: signedInUser }, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (signInError) {
+    if (signInError || !signedInUser) {
+      setError("Email o contraseña incorrectos");
+      setLoading(false);
+      return;
+    }
+
+    // Block deactivated accounts before completing the login
+    const { data: creds } = await supabase
+      .from("credentials")
+      .select("is_active")
+      .eq("user_id", signedInUser.id)
+      .maybeSingle();
+
+    if (!creds?.is_active) {
+      await supabase.auth.signOut();
       setError("Email o contraseña incorrectos");
       setLoading(false);
       return;
