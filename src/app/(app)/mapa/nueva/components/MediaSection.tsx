@@ -449,7 +449,7 @@ function FileCard({
           type="button"
           onClick={onRemove}
           aria-label={`Eliminar ${entry.originalName}`}
-          className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white/60 hover:text-red-400 hover:bg-black/80 transition-colors cursor-pointer"
+          className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-red-400 hover:text-amber-300 hover:bg-black/80 transition-colors cursor-pointer"
         >
           <X size={12} />
         </button>

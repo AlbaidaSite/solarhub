@@ -295,13 +295,14 @@ export default function CromoCreateForm({
           />
         </Field>
 
-        <Field label="Artistas">
+        <div className="flex flex-col gap-1">
+          <span className={LABEL_CLASS}>Artistas</span>
           <ArtistMultiSelect
             artists={artists}
             selectedIds={artistIds}
             onChange={setArtistIds}
           />
-        </Field>
+        </div>
 
         <Field label="Copias">
           <input

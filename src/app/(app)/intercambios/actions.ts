@@ -217,7 +217,14 @@ export async function addUniqueByCodeToMyTradeOfferAction(
   const { error: insertError } = await supabase
     .from("trade_unique")
     .insert({ trade_offer_id: offer.id, unique_id: uniqueId });
-  if (insertError) return { ok: false, message: insertError.message };
+  if (insertError) {
+    const msg = insertError.message;
+    if (msg.includes("trade_unique_pkey"))
+      return { ok: false, message: "Algún cromo de los seleccionados ya está en este intercambio." };
+    if (msg.includes("comprometido"))
+      return { ok: false, message: "Algún cromo de los seleccionados ya está comprometido en otro intercambio activo." };
+    return { ok: false, message: msg };
+  }
 
   return {
     ok: true,

@@ -72,7 +72,7 @@ export default function ClusterPopup({
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="p-1 rounded-full text-white/50 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
+            className="p-1 rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
           >
             <X size={18} />
           </button>

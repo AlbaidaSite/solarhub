@@ -113,7 +113,7 @@ export default function TradeListClient({
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="text-white/40 hover:text-white transition-colors"
+              className="rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors"
             >
               <X size={14} />
             </button>

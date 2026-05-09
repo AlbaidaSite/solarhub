@@ -231,9 +231,10 @@ export default function CromoEditForm({
             rows={3} className={`${FIELD_CLASS} resize-y`} />
         </Field>
 
-        <Field label="Artistas">
+        <div className="flex flex-col gap-1">
+          <span className={LABEL_CLASS}>Artistas</span>
           <ArtistMultiSelect artists={artists} selectedIds={artistIds} onChange={setArtistIds} />
-        </Field>
+        </div>
 
         <Field label="Copias">
           <input type="number" min={1} value={copies}

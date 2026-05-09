@@ -50,7 +50,7 @@ export const MobileMenu = ({
         <div className="fixed top-4 right-4 z-20">
           <button
             onClick={onClose}
-            className="text-white hover:text-gray-300 transition-colors p-2 mt-2 mr-2 "
+            className="rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors p-2 mt-2 mr-2 "
             aria-label="Cerrar menú"
           >
             <X size={32} />
