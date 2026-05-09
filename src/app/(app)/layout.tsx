@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, ReactNode } from 'react';
 import { StarBackground } from '@/components/StarBackground';
 import { DesktopNavbar } from '@/components/DesktopNavbar';
 import { MobileMenu } from '@/components/MobileMenu';
-import { Footer } from '@/components/Footer';
 import { useScrollDirection } from '@/hooks/useScrollDirection';
 import { MENU_ITEMS } from '@/constants/navigation';
 import { usePathname } from 'next/navigation';
@@ -46,7 +45,6 @@ export default function AppLayout({children,}: {children: ReactNode}) {
                 <div className="flex-1">
                     {children}
                 </div>
-                <Footer />
             </main>
         </div>
     );
