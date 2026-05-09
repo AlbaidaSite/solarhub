@@ -7,7 +7,7 @@ import {
   AtSign,
   ArrowLeft,
   Eye,
-  EyeOff,
+  EyeClosed,
 } from "lucide-react";
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
@@ -348,7 +348,7 @@ export default function RegisterRequestForm() {
         type={showPassword ? "text" : "password"}
         name="password"
         placeholder="Contraseña"
-        icon={showPassword ? <EyeOff size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
+        icon={showPassword ? <EyeClosed size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
         onIconClick={() => setShowPassword((s) => !s)}
         iconAriaLabel={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
         autoComplete="new-password"
@@ -361,7 +361,7 @@ export default function RegisterRequestForm() {
         type={showConfirmPassword ? "text" : "password"}
         name="confirmPassword"
         placeholder="Repetir contraseña"
-        icon={showConfirmPassword ? <EyeOff size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
+        icon={showConfirmPassword ? <EyeClosed size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
         onIconClick={() => setShowConfirmPassword((s) => !s)}
         iconAriaLabel={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
         autoComplete="new-password"

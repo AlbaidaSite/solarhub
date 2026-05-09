@@ -105,7 +105,7 @@ export default function TradeCromoPanel({
   };
 
   return (
-    <div className="flex flex-col gap-5 h-full overflow-y-auto scrollbar-clean">
+    <div className="flex flex-col gap-5 h-full overflow-y-auto scrollbar-clean mt-19">
       {/* Cabecera */}
       <div className="flex items-start justify-between gap-3">
         <h2 className="text-base font-bold text-white leading-tight">
@@ -116,9 +116,9 @@ export default function TradeCromoPanel({
           type="button"
           onClick={onClose}
           aria-label="Cerrar"
-          className="p-1.5 rounded-full text-white/50 hover:text-white hover:bg-white/5 transition-colors cursor-pointer shrink-0"
+          className="rounded-full text-white/50 hover:text-white hover:bg-white/5 transition-colors cursor-pointer shrink-0"
         >
-          <X size={18} />
+          <X size={28} />
         </button>
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Filter, Search, X } from "lucide-react";
+import { Eye, EyeClosed, Filter, Search, X } from "lucide-react";
 import AuroraField from "@/components/ui/AuroraField";
 import { useScrollDirection } from "@/hooks/useScrollDirection";
 import { getStorageUrl } from "@/lib/supabase/storage";
@@ -22,6 +22,11 @@ interface AlbumFiltersProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   isModalOpen: boolean;
+  showAll: boolean;
+  onShowAllToggle: () => void;
+  isSuperuser: boolean;
+  showSuperAll: boolean;
+  onShowSuperAllToggle: () => void;
 }
 
 const ALL_ICON = getStorageUrl("categories/all.webp");
@@ -38,6 +43,11 @@ export default function AlbumFilters({
   searchQuery,
   onSearchChange,
   isModalOpen,
+  showAll,
+  onShowAllToggle,
+  isSuperuser,
+  showSuperAll,
+  onShowSuperAllToggle,
 }: AlbumFiltersProps) {
   const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
   const isVisible = useScrollDirection(scrollEl);
@@ -135,7 +145,7 @@ export default function AlbumFilters({
         </div>
       </div>
 
-      {/* ───── Mobile (< nav 650px): embudo + acceso a "registrar cromo" apilados arriba-izquierda ───── */}
+      {/* ───── Mobile (< nav 650px): embudo + botones apilados arriba-izquierda ───── */}
       <div
         className={`nav:hidden fixed top-0 left-0 z-50 pointer-events-none transition-transform duration-300 ${
           isVisible && !isModalOpen ? "translate-y-0" : "-translate-y-full"
@@ -150,8 +160,30 @@ export default function AlbumFilters({
             <Filter size={32} />
           </button>
 
-          {/* Registrar (izquierda) e Intercambios (derecha) en la misma fila */}
           <div className="flex items-center">
+            {/* Botón eye en móvil */}
+            <button
+              type="button"
+              onClick={onShowAllToggle}
+              aria-label={showAll ? "Mostrar solo mis cromos" : "Mostrar todos los cromos"}
+              className="text-white hover:text-amber-300 transition-colors p-2 pointer-events-auto cursor-pointer"
+            >
+              {showAll || showSuperAll ? <EyeClosed size={28} /> : <Eye size={28} />}
+            </button>
+
+            {isSuperuser && (
+              <button
+                type="button"
+                onClick={onShowSuperAllToggle}
+                aria-label={showSuperAll ? "Desactivar vista de administrador" : "Ver todos los cromos (administrador)"}
+                className={`transition-colors p-2 pointer-events-auto cursor-pointer ${
+                  showSuperAll ? "text-amber-400 hover:text-amber-300" : "text-amber-600 hover:text-amber-400"
+                }`}
+              >
+                {showSuperAll ? <EyeClosed size={28} /> : <Eye size={28} />}
+              </button>
+            )}
+
             <RegisterCromoButton className="inline-flex pointer-events-auto" />
             <IntercambiosButton className="inline-flex pointer-events-auto" />
           </div>

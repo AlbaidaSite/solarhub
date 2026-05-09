@@ -34,6 +34,7 @@ export async function updateCromoAction(
   const name          = String(formData.get("name") ?? "").trim();
   const description   = String(formData.get("description") ?? "").trim() || null;
   const numberRaw     = Number(formData.get("number"));
+  const variantRaw    = Number(formData.get("variant"));
   const categoryId    = Number(formData.get("categoryId"));
   const rarityId      = Number(formData.get("rarityId"));
   const howTo         = String(formData.get("howTo") ?? "").trim() || null;
@@ -47,6 +48,8 @@ export async function updateCromoAction(
   if (!name) return { ok: false, error: "El nombre es obligatorio." };
   if (!Number.isInteger(numberRaw) || numberRaw <= 0)
     return { ok: false, error: "Número inválido." };
+  if (!Number.isInteger(variantRaw) || variantRaw < 0)
+    return { ok: false, error: "Variante inválida." };
   if (!Number.isInteger(categoryId) || categoryId <= 0)
     return { ok: false, error: "Categoría inválida." };
   if (!Number.isInteger(rarityId) || rarityId <= 0)
@@ -98,7 +101,6 @@ export async function updateCromoAction(
     .eq("id", labelsId);
   if (labelsErr) return { ok: false, error: `Error actualizando labels: ${labelsErr.message}` };
 
-  // ── Actualizar cromo (el variant NO cambia: lo mantiene la DB) ───────────
   const { error: cromoErr } = await supabase
     .from("cromo")
     .update({
@@ -109,6 +111,7 @@ export async function updateCromoAction(
       back_img:       backPath,
       description,
       number:         numberRaw,
+      variant:        variantRaw,
       copies:         copiesRaw,
       how_to:         howTo,
       how_to_extended: howToExtended,

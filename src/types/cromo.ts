@@ -41,6 +41,11 @@ export interface OwnedUnique {
   copyNumber: number;
 }
 
+// 'owned'          → user currently has at least one copy
+// 'formerly_owned'  → user had it at some point but no longer does
+// 'never_owned'     → user has never had this cromo (but it is visible to them)
+export type CromoOwnershipState = 'owned' | 'formerly_owned' | 'never_owned';
+
 export interface CromoDetail {
   id: number;
   name: string;
@@ -53,7 +58,11 @@ export interface CromoDetail {
   front_img: string;       // URL resuelta (full)
   front_thumb: string;     // URL resuelta (thumbnail ~400px)
   back_img: string;        // URL resuelta (full)
-  isLocked: boolean;
+  ownershipState: CromoOwnershipState;
+  // true cuando has_owners=false: muestra locked.webp en lugar de la imagen real
+  isImageLocked: boolean;
+  // Fecha de la primera vez que el usuario obtuvo este cromo (null si nunca lo ha tenido)
+  firstAcquiredAt: string | null;
   // Uniques que el usuario logueado posee actualmente de este cromo.
   // Vacío si no posee ninguno o si la llamada no tiene contexto de usuario.
   userOwnedUniques: OwnedUnique[];

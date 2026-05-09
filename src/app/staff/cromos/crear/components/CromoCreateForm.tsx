@@ -57,6 +57,7 @@ export default function CromoCreateForm({
   const [backImage, setBackImage] = useState<File | null>(null);
   const [description, setDescription] = useState("");
   const [number, setNumber] = useState("");
+  const [variant, setVariant] = useState("0");
   const [categoryId, setCategoryId] = useState<string>("");
   const [rarityId, setRarityId] = useState<string>("");
   const [howTo, setHowTo] = useState("");
@@ -144,6 +145,7 @@ export default function CromoCreateForm({
     fd.append("name", name.trim());
     fd.append("description", description);
     fd.append("number", number);
+    fd.append("variant", variant);
     fd.append("categoryId", categoryId);
     fd.append("rarityId", rarityId);
     fd.append("howTo", howTo);
@@ -217,7 +219,7 @@ export default function CromoCreateForm({
           />
         </Field>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           <Field label="Número">
             <input
               type="number"
@@ -227,6 +229,16 @@ export default function CromoCreateForm({
                 setNumber(e.target.value);
                 invalidateCodes();
               }}
+              className={FIELD_CLASS}
+            />
+          </Field>
+
+          <Field label="Variante">
+            <input
+              type="number"
+              min={0}
+              value={variant}
+              onChange={(e) => setVariant(e.target.value)}
               className={FIELD_CLASS}
             />
           </Field>
