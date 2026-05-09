@@ -165,6 +165,20 @@ export async function createCromoAction(formData: FormData): Promise<CreateCromo
   if (!Number.isInteger(variantRaw) || variantRaw < 0)
     return { ok: false, error: "Variante inválida." };
 
+  // ── Verificar que ningún code ya existe en esta categoría ────────────────
+  const { data: conflicting, error: conflictErr } = await supabase
+    .from("unique_cromo")
+    .select("code, cromo:cromo_id!inner(category_id)")
+    .eq("cromo.category_id", categoryId)
+    .in("code", codes);
+  if (conflictErr) return { ok: false, error: conflictErr.message };
+  if (conflicting && conflicting.length > 0) {
+    const dupes = (conflicting as unknown as Array<{ code: number }>)
+      .map((r) => r.code)
+      .join(", ");
+    return { ok: false, error: `Los siguientes codes ya existen en esta categoría: ${dupes}` };
+  }
+
   // ── Subir imágenes a storage ──────────────────────────────────────────────
   const baseName = `${slugify(name) || "cromo"}-${Date.now()}`;
   const frontPath = `cromos/${baseName}.webp`;
@@ -225,7 +239,10 @@ export async function createCromoAction(formData: FormData): Promise<CreateCromo
   if (cromoErr || !cromoRow) {
     await supabase.from("cromo_labels").delete().eq("id", labelRow.id);
     await cleanupStorage();
-    return { ok: false, error: `Error creando cromo: ${cromoErr?.message ?? "desconocido"}` };
+    const msg = cromoErr?.message ?? "";
+    if (msg.includes("cromo_category_id_number_variant_key"))
+      return { ok: false, error: "Ya existe un cromo con este número en esta categoría. ¿Es esto una variante?" };
+    return { ok: false, error: `Error creando cromo: ${msg || "desconocido"}` };
   }
 
   const cromoId = cromoRow.id as number;

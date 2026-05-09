@@ -142,7 +142,7 @@ export function PendingRequestsTable({ rows: initial }: { rows: PendingRow[] }) 
                         title="Denegar"
                         disabled={busy}
                         onClick={() => handleDeny(row.request_id)}
-                        className="p-1.5 rounded-lg text-white/50 hover:text-red-400 hover:bg-red-400/10 transition-colors cursor-pointer disabled:opacity-40"
+                        className="p-1.5 rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer disabled:opacity-40"
                       >
                         <X size={16} strokeWidth={2.5} />
                       </button>

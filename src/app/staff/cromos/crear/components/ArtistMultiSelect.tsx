@@ -74,7 +74,7 @@ export default function ArtistMultiSelect({
                 type="button"
                 onClick={() => toggle(a.id)}
                 aria-label={`Quitar ${a.name}`}
-                className="hover:text-white transition-colors cursor-pointer"
+                className="rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
               >
                 <X size={12} strokeWidth={2.5} />
               </button>

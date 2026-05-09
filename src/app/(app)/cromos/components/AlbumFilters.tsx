@@ -201,7 +201,7 @@ export default function AlbumFilters({
         <div className="fixed top-4 left-4 z-20">
           <button
             onClick={() => setIsMobileOpen(false)}
-            className="text-red-300/70 hover:text-gray-300 transition-colors p-2 mt-2 mr-2"
+            className="rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors p-2 mt-2 mr-2"
             aria-label="Cerrar filtros"
           >
             <X size={32} />

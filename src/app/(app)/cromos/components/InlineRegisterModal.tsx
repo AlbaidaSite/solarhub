@@ -108,7 +108,7 @@ export default function InlineRegisterModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-full text-white/50 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+            className="p-1 rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
           >
             <X size={16} />
           </button>

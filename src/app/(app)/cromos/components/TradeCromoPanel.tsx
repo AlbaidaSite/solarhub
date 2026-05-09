@@ -116,7 +116,7 @@ export default function TradeCromoPanel({
           type="button"
           onClick={onClose}
           aria-label="Cerrar"
-          className="rounded-full text-white/50 hover:text-white hover:bg-white/5 transition-colors cursor-pointer shrink-0"
+          className="rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer shrink-0"
         >
           <X size={28} />
         </button>
@@ -175,7 +175,7 @@ export default function TradeCromoPanel({
                   className="flex-1 bg-transparent outline-none text-xs text-white placeholder-white/40"
                 />
                 {search && (
-                  <button type="button" onClick={() => setSearch("")} className="text-white/40 hover:text-white transition-colors">
+                  <button type="button" onClick={() => setSearch("")} className="rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors">
                     <X size={12} />
                   </button>
                 )}
