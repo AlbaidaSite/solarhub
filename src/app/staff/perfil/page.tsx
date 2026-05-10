@@ -9,9 +9,10 @@ export const metadata: Metadata = { title: "Staff · Perfil | SolarHub" };
 export default async function StaffPerfilPage() {
   const supabase = await requireStaff();
 
-  const [{ data: pending }, { data: users }] = await Promise.all([
+  const [{ data: pending }, { data: users }, { data: isSuperuser }] = await Promise.all([
     supabase.rpc("get_pending_requests_staff"),
     supabase.rpc("get_all_users_staff"),
+    supabase.rpc("is_superuser"),
   ]);
 
   return (
@@ -31,7 +32,7 @@ export default async function StaffPerfilPage() {
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold text-white/80">Usuarios</h2>
-        <UsersAdminList rows={(users ?? []) as UserRow[]} />
+        <UsersAdminList rows={(users ?? []) as UserRow[]} isSuperuser={Boolean(isSuperuser)} />
       </section>
     </div>
   );

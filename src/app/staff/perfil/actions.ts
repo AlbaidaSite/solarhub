@@ -52,6 +52,9 @@ export async function updateUserCredentialsAction(
   const supabase = await getAuthClient();
   if (!supabase) return { ok: false, error: "No autorizado." };
 
+  const { data: isSuperuser } = await supabase.rpc("is_superuser");
+  if (!isSuperuser) return { ok: false, error: "Solo un superusuario puede modificar credenciales." };
+
   const { error } = await createSupabaseAdminClient()
     .from("credentials")
     .update(flags)
