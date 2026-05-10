@@ -309,7 +309,13 @@ function FilterChip({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function UsersAdminList({ rows: initial }: { rows: UserRow[] }) {
+export default function UsersAdminList({
+  rows: initial,
+  isSuperuser,
+}: {
+  rows: UserRow[];
+  isSuperuser: boolean;
+}) {
   const [rows, setRows] = useState<UserRow[]>(initial);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -383,14 +389,16 @@ export default function UsersAdminList({ rows: initial }: { rows: UserRow[] }) {
                 <td className="px-4 py-3 text-white/70">{row.email}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      title="Credenciales"
-                      onClick={() => setCredUser(row)}
-                      className="p-1.5 rounded-lg text-white/50 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
-                    >
-                      <IdCard size={16} strokeWidth={2} />
-                    </button>
+                    {isSuperuser && (
+                      <button
+                        type="button"
+                        title="Credenciales"
+                        onClick={() => setCredUser(row)}
+                        className="p-1.5 rounded-lg text-white/50 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        <IdCard size={16} strokeWidth={2} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       title={row.is_active ? "Desactivar cuenta" : "Reactivar cuenta"}
