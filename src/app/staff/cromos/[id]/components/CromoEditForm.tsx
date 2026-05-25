@@ -171,7 +171,7 @@ export default function CromoEditForm({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-6xl mx-auto w-full">
-      {/* ── COLUMNA IZQUIERDA: FORMULARIO ───────────────────────────────── */}
+      {/* ── COLUMNA IZQUIERDA: FORMULARIO ──────────────────────────── */}
       <div className="rounded-xl border border-white/15 bg-black/30 p-5 flex flex-col gap-4">
         <h2 className="text-lg font-bold text-white">Datos del cromo</h2>
 
@@ -255,7 +255,7 @@ export default function CromoEditForm({
         </div>
       </div>
 
-      {/* ── COLUMNA DERECHA: UNIQUES / CODES ──────────────────────────── */}
+      {/* ── COLUMNA DERECHA: UNIQUES / CODES ─────────────────────── */}
       <div className="rounded-xl border border-white/15 bg-black/30 p-5 flex flex-col gap-4">
         <h2 className="text-lg font-bold text-white">Códigos por copia</h2>
 

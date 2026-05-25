@@ -103,7 +103,7 @@ export default function AlbumFilters({
 
   return (
     <>
-      {/* ───── Desktop (≥ nav 650px): categorías centradas; debajo: sort | rarezas | búsqueda ───── */}
+      {/* Desktop (≥ nav 650px): categorías centradas; debajo: sort | rarezas | búsqueda */}
       <div className="hidden nav:block px-4 pt-2 pb-6">
         <div className="flex flex-wrap justify-center gap-3">
           {categoryButtons}
@@ -145,7 +145,7 @@ export default function AlbumFilters({
         </div>
       </div>
 
-      {/* ───── Mobile (< nav 650px): embudo + botones apilados arriba-izquierda ───── */}
+      {/* Mobile (< nav 650px): embudo + botones apilados arriba-izquierda */}
       <div
         className={`nav:hidden fixed top-0 left-0 z-50 pointer-events-none transition-transform duration-300 ${
           isVisible && !isModalOpen ? "translate-y-0" : "-translate-y-full"
@@ -190,7 +190,7 @@ export default function AlbumFilters({
         </div>
       </div>
 
-      {/* ───── Mobile overlay con todos los filtros ───── */}
+      {/*  Mobile overlay con todos los filtros  */}
       <div
         className={`nav:hidden fixed inset-0 z-100 ${
           isMobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
