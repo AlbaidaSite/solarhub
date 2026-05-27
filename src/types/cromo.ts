@@ -39,6 +39,9 @@ export type SortBy =
 export interface OwnedUnique {
   uniqueId: number;
   copyNumber: number;
+  // true si la copia ya está comprometida en un intercambio abierto
+  // (trade con is_mutual_agreement = false) del usuario.
+  inTrade: boolean;
 }
 
 // 'owned'          → user currently has at least one copy

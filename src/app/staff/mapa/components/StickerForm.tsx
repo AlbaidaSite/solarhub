@@ -4,6 +4,12 @@ import { useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ImageIcon } from "lucide-react";
+import {
+  Field,
+  FIELD_CLASS,
+  LABEL_CLASS,
+  SubmitButton,
+} from "../../components/form";
 import type { StickerActionResult } from "../actions";
 
 interface StickerFormProps {
@@ -12,10 +18,6 @@ interface StickerFormProps {
   action: (formData: FormData) => Promise<StickerActionResult>;
   submitLabel: string;
 }
-
-const FIELD_CLASS =
-  "w-full px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-white text-sm placeholder-white/40 focus:outline-none focus:border-amber-300 transition-colors";
-const LABEL_CLASS = "text-xs font-semibold text-white/70 uppercase tracking-wide";
 
 export default function StickerForm({
   existingIconUrl,
@@ -31,13 +33,21 @@ export default function StickerForm({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) { setPreviewUrl(null); return; }
-    setPreviewUrl(URL.createObjectURL(file));
+    setPreviewUrl(file ? URL.createObjectURL(file) : null);
   };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFormError(null);
+
+    // El input file está oculto, por lo que el `required` del navegador no
+    // muestra el popup de validación. Comprobamos aquí en JS para que el
+    // usuario reciba un aviso visible.
+    if (!isEditing && !previewUrl) {
+      setFormError("Debes seleccionar una imagen.");
+      return;
+    }
+
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
       const result = await action(fd);
@@ -53,9 +63,11 @@ export default function StickerForm({
   const isEditing = !!existingIconUrl;
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5 max-w-md w-full">
-      <label className="flex flex-col gap-1">
-        <span className={LABEL_CLASS}>Nombre *</span>
+    <form
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-5 max-w-md w-full"
+    >
+      <Field label="Nombre *">
         <input
           type="text"
           name="name"
@@ -63,7 +75,7 @@ export default function StickerForm({
           required
           className={FIELD_CLASS}
         />
-      </label>
+      </Field>
 
       <div className="flex flex-col gap-2">
         <span className={LABEL_CLASS}>
@@ -100,7 +112,6 @@ export default function StickerForm({
           accept="image/webp,image/png,image/jpeg,image/svg+xml,image/gif"
           className="hidden"
           onChange={handleFileChange}
-          {...(!isEditing && { required: true })}
         />
 
         <button
@@ -113,16 +124,10 @@ export default function StickerForm({
       </div>
 
       {formError && (
-        <p className="text-sm text-red-400">{formError}</p>
+        <p className="text-sm text-red-400 whitespace-pre-line">{formError}</p>
       )}
 
-      <button
-        type="submit"
-        disabled={isPending}
-        className="px-6 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 disabled:cursor-not-allowed text-zinc-900 font-bold shadow transition-colors cursor-pointer"
-      >
-        {isPending ? "Guardando…" : submitLabel}
-      </button>
+      <SubmitButton isPending={isPending}>{submitLabel}</SubmitButton>
     </form>
   );
 }

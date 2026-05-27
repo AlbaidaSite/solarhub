@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { IdCard, Power, PowerOff, Shield, Leaf, Sun } from "lucide-react";
+import AdminTable, { type ColumnDef } from "../../components/AdminTable";
+import { RowActions } from "../../components/RowActions";
 import {
   updateUserCredentialsAction,
   setUserActiveAction,
@@ -20,7 +22,7 @@ export interface UserRow {
   is_garden_manager: boolean;
 }
 
-// ─── Filters ────────────────────────────────────────────────────────────────
+// ─── Filtros ────────────────────────────────────────────────────────────────
 
 type StatusFilter = "all" | "active" | "inactive";
 
@@ -39,7 +41,31 @@ function applyFilters(
   });
 }
 
-// ─── Credentials popup ───────────────────────────────────────────────────────
+function FilterChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer border ${
+        active
+          ? "bg-amber-500 border-amber-500 text-zinc-900"
+          : "bg-transparent border-white/20 text-white/60 hover:border-white/40 hover:text-white"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ─── Popup de credenciales ──────────────────────────────────────────────────
 
 function CredentialsPopup({
   user,
@@ -89,12 +115,13 @@ function CredentialsPopup({
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* is_superuser — read-only badge */}
           {user.is_superuser && (
             <div className="flex items-center gap-3 opacity-50 cursor-not-allowed select-none">
               <Shield size={16} className="text-amber-300 shrink-0" />
               <span className="text-sm text-white flex-1">Superusuario</span>
-              <span className="text-xs text-amber-300 font-semibold">Solo Supabase</span>
+              <span className="text-xs text-amber-300 font-semibold">
+                Solo Supabase
+              </span>
             </div>
           )}
 
@@ -175,9 +202,7 @@ function CredentialToggle({
   );
 }
 
-// ─── Power popup (activate / deactivate) ─────────────────────────────────────
-
-type PowerStep = "confirm1" | "confirm2";
+// ─── Popup de activar / desactivar cuenta ───────────────────────────────────
 
 function PowerPopup({
   user,
@@ -189,7 +214,7 @@ function PowerPopup({
   onDone: (userId: string, isActive: boolean) => void;
 }) {
   const activating = !user.is_active;
-  const [step, setStep] = useState<PowerStep>("confirm1");
+  const [step, setStep] = useState<"confirm1" | "confirm2">("confirm1");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -232,7 +257,6 @@ function PowerPopup({
                 : "El usuario perderá el acceso a la plataforma hasta que se reactive."}
             </p>
             <div className="flex gap-3">
-              {/* Step 1: action button LEFT */}
               <button
                 type="button"
                 onClick={() => setStep("confirm2")}
@@ -252,7 +276,9 @@ function PowerPopup({
         ) : (
           <>
             <p className="text-white font-semibold text-center">
-              {activating ? "¿Confirmar reactivación?" : "¿Confirmar desactivación?"}
+              {activating
+                ? "¿Confirmar reactivación?"
+                : "¿Confirmar desactivación?"}
             </p>
             <div className="flex gap-3">
               <button
@@ -263,7 +289,6 @@ function PowerPopup({
               >
                 Cancelar
               </button>
-              {/* Step 2: action button RIGHT */}
               <button
                 type="button"
                 onClick={handleConfirm}
@@ -273,7 +298,9 @@ function PowerPopup({
                 {isPending ? "Guardando…" : "Confirmar"}
               </button>
             </div>
-            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            {error && (
+              <p className="text-red-400 text-sm text-center">{error}</p>
+            )}
           </>
         )}
       </div>
@@ -281,33 +308,7 @@ function PowerPopup({
   );
 }
 
-// ─── Filter chip ─────────────────────────────────────────────────────────────
-
-function FilterChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer border ${
-        active
-          ? "bg-amber-500 border-amber-500 text-zinc-900"
-          : "bg-transparent border-white/20 text-white/60 hover:border-white/40 hover:text-white"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Componente principal ───────────────────────────────────────────────────
 
 export default function UsersAdminList({
   rows: initial,
@@ -326,22 +327,29 @@ export default function UsersAdminList({
   const [powerUser, setPowerUser] = useState<UserRow | null>(null);
 
   const updateRow = (userId: string, patch: Partial<UserRow>) =>
-    setRows((prev) => prev.map((r) => (r.user_id === userId ? { ...r, ...patch } : r)));
-
-  const handleCredSaved = (userId: string, flags: CredentialFlags) =>
-    updateRow(userId, flags);
-
-  const handlePowerDone = (userId: string, isActive: boolean) =>
-    updateRow(userId, { is_active: isActive });
+    setRows((prev) =>
+      prev.map((r) => (r.user_id === userId ? { ...r, ...patch } : r)),
+    );
 
   const toggleStatus = (s: StatusFilter) =>
     setStatusFilter((prev) => (prev === s ? "all" : s));
 
   const visible = applyFilters(rows, statusFilter, filterLoukou, filterGarden);
 
+  const columns: ColumnDef<UserRow>[] = [
+    { header: "Nombre", cell: (r) => r.name },
+    {
+      header: "Usuario",
+      cell: (r) => <span className="text-white/70">@{r.username}</span>,
+    },
+    {
+      header: "Correo",
+      cell: (r) => <span className="text-white/70">{r.email}</span>,
+    },
+  ];
+
   return (
     <>
-      {/* Filters */}
       <div className="flex flex-wrap gap-2">
         <FilterChip
           label="Activos"
@@ -365,81 +373,60 @@ export default function UsersAdminList({
         />
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-white/15 overflow-hidden">
-        <table className="w-full text-sm text-white">
-          <thead className="bg-white/10 text-white/60 uppercase text-xs">
-            <tr>
-              <th className="px-4 py-3 text-left">Nombre</th>
-              <th className="px-4 py-3 text-left">Usuario</th>
-              <th className="px-4 py-3 text-left">Correo</th>
-              <th className="px-4 py-3 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/10">
-            {visible.map((row) => (
-              <tr
-                key={row.user_id}
-                className={`transition-colors ${
-                  row.is_active ? "bg-black hover:bg-zinc-900" : "bg-zinc-950 hover:bg-zinc-900 opacity-60"
-                }`}
+      <AdminTable<UserRow>
+        rows={visible}
+        getRowKey={(r) => r.user_id}
+        columns={columns}
+        rowClassName={(r) =>
+          r.is_active
+            ? "bg-black hover:bg-zinc-900"
+            : "bg-zinc-950 hover:bg-zinc-900 opacity-60"
+        }
+        rowActions={(row) => (
+          <RowActions>
+            {isSuperuser && (
+              <button
+                type="button"
+                title="Credenciales"
+                onClick={() => setCredUser(row)}
+                className="p-1.5 rounded-lg text-white/50 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
               >
-                <td className="px-4 py-3 font-medium">{row.name}</td>
-                <td className="px-4 py-3 text-white/70">@{row.username}</td>
-                <td className="px-4 py-3 text-white/70">{row.email}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-2">
-                    {isSuperuser && (
-                      <button
-                        type="button"
-                        title="Credenciales"
-                        onClick={() => setCredUser(row)}
-                        className="p-1.5 rounded-lg text-white/50 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
-                      >
-                        <IdCard size={16} strokeWidth={2} />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      title={row.is_active ? "Desactivar cuenta" : "Reactivar cuenta"}
-                      onClick={() => setPowerUser(row)}
-                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                        row.is_active
-                          ? "text-white/50 hover:text-red-400 hover:bg-red-400/10"
-                          : "text-white/50 hover:text-emerald-400 hover:bg-emerald-400/10"
-                      }`}
-                    >
-                      {row.is_active ? (
-                        <PowerOff size={16} strokeWidth={2} />
-                      ) : (
-                        <Power size={16} strokeWidth={2} />
-                      )}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {visible.length === 0 && (
-          <p className="px-4 py-8 text-center text-white/40">
-            No hay usuarios con los filtros seleccionados.
-          </p>
+                <IdCard size={16} strokeWidth={2} />
+              </button>
+            )}
+            <button
+              type="button"
+              title={row.is_active ? "Desactivar cuenta" : "Reactivar cuenta"}
+              onClick={() => setPowerUser(row)}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                row.is_active
+                  ? "text-white/50 hover:text-red-400 hover:bg-red-400/10"
+                  : "text-white/50 hover:text-emerald-400 hover:bg-emerald-400/10"
+              }`}
+            >
+              {row.is_active ? (
+                <PowerOff size={16} strokeWidth={2} />
+              ) : (
+                <Power size={16} strokeWidth={2} />
+              )}
+            </button>
+          </RowActions>
         )}
-      </div>
+        emptyMessage="No hay usuarios con los filtros seleccionados."
+      />
 
       {credUser && (
         <CredentialsPopup
           user={credUser}
           onClose={() => setCredUser(null)}
-          onSaved={handleCredSaved}
+          onSaved={(uid, flags) => updateRow(uid, flags)}
         />
       )}
       {powerUser && (
         <PowerPopup
           user={powerUser}
           onClose={() => setPowerUser(null)}
-          onDone={handlePowerDone}
+          onDone={(uid, isActive) => updateRow(uid, { is_active: isActive })}
         />
       )}
     </>

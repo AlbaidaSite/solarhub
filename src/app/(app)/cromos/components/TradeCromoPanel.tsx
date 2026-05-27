@@ -105,7 +105,7 @@ export default function TradeCromoPanel({
   };
 
   return (
-    <div className="flex flex-col gap-5 h-full overflow-y-auto scrollbar-clean mt-19">
+    <div className="flex flex-col gap-5 h-full overflow-y-auto scrollbar-clean mt-2">
       {/* Cabecera */}
       <div className="flex items-start justify-between gap-3">
         <h2 className="text-base font-bold text-white leading-tight">

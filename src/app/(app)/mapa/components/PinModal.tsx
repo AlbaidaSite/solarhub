@@ -62,7 +62,7 @@ export default function PinModal({ detail, onClose, onDelete }: PinModalProps) {
       if (result.ok) {
         onDelete?.();
       } else {
-        setDeleteError(result.error ?? "Error al eliminar");
+        setDeleteError(result.error);
         setDeleteStep(null);
       }
     });

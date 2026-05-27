@@ -91,7 +91,7 @@ export default function EditProfileView({
       )}
 
       {/* Deactivation trigger */}
-      <div className="mt-16 w-full max-w-sm border-t border-white/10 pt-8 flex flex-col items-center gap-3">
+      <div className="mt-16 w-full max-w-sm border-t border-white/10 pt-8 flex flex-col items-center gap-3 mb-8">
         <button
           type="button"
           onClick={() => setDeactivateStep("confirm1")}
@@ -445,7 +445,7 @@ function PasswordForm({ currentEmail }: { currentEmail: string }) {
         type={showCurrent ? "text" : "password"}
         name="currentPassword"
         placeholder="Contraseña actual"
-        icon={<EyeToggle on={showCurrent} setOn={setShowCurrent} />}
+        {...eyeToggleProps(showCurrent, setShowCurrent)}
         autoComplete="current-password"
         value={currentPw}
         onChange={(e) => setCurrentPw(e.target.value)}
@@ -456,7 +456,7 @@ function PasswordForm({ currentEmail }: { currentEmail: string }) {
         type={showNew ? "text" : "password"}
         name="newPassword"
         placeholder="Nueva contraseña"
-        icon={<EyeToggle on={showNew} setOn={setShowNew} />}
+        {...eyeToggleProps(showNew, setShowNew)}
         autoComplete="new-password"
         value={newPw}
         onChange={(e) => setNewPw(e.target.value)}
@@ -467,7 +467,7 @@ function PasswordForm({ currentEmail }: { currentEmail: string }) {
         type={showConfirm ? "text" : "password"}
         name="confirmPassword"
         placeholder="Repetir nueva contraseña"
-        icon={<EyeToggle on={showConfirm} setOn={setShowConfirm} />}
+        {...eyeToggleProps(showConfirm, setShowConfirm)}
         autoComplete="new-password"
         value={confirmPw}
         onChange={(e) => setConfirmPw(e.target.value)}
@@ -493,21 +493,17 @@ function PasswordForm({ currentEmail }: { currentEmail: string }) {
   );
 }
 
-function EyeToggle({
-  on,
-  setOn,
-}: {
-  on: boolean;
-  setOn: (v: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => setOn(!on)}
-      aria-label={on ? "Ocultar contraseña" : "Mostrar contraseña"}
-      className="cursor-pointer hover:text-amber-300 transition-colors"
-    >
-      {on ? <EyeClosed size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
-    </button>
-  );
+// Devuelve los props (icon + onIconClick + iconAriaLabel) que AuroraField
+// necesita para mostrar el icono del ojo y togglear la visibilidad.
+// IMPORTANTE: AuroraField ya envuelve el icono en un <button> interno
+// (IconButton), así que aquí pasamos solo el icono — un <button> dentro
+// del icono provocaba <button> anidado.
+function eyeToggleProps(on: boolean, setOn: (v: boolean) => void) {
+  return {
+    icon: on
+      ? <EyeClosed size={20} strokeWidth={2.5} />
+      : <Eye size={20} strokeWidth={2.5} />,
+    onIconClick: () => setOn(!on),
+    iconAriaLabel: on ? "Ocultar contraseña" : "Mostrar contraseña",
+  };
 }

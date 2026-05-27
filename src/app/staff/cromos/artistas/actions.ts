@@ -1,30 +1,27 @@
 "use server";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+import { requireStaffActionClient } from "../../lib/actionAuth";
+import { getOptionalString, getString } from "../../lib/formData";
 
-export type ArtistActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type ArtistActionResult = { ok: true } | { ok: false; error: string };
 
-async function getAuthClient() {
-  const supabase = await createSupabaseServerClient();
-  const { data: isStaff, error } = await supabase.rpc("is_staff");
-  if (error || !isStaff) return null;
-  return supabase;
-}
+const LIST_PATH = "/staff/cromos/artistas";
 
 export async function createArtistAction(
   formData: FormData,
 ): Promise<ArtistActionResult> {
-  const supabase = await getAuthClient();
-  if (!supabase) return { ok: false, error: "No autorizado." };
+  const auth = await requireStaffActionClient();
+  if (!auth.ok) return auth;
 
-  const name = String(formData.get("name") ?? "").trim();
+  const name = getString(formData, "name");
   if (!name) return { ok: false, error: "El nombre es obligatorio." };
-  const url = String(formData.get("url") ?? "").trim() || null;
+  const url = getOptionalString(formData, "url");
 
-  const { error } = await supabase.from("artist").insert({ name, url });
+  const { error } = await auth.supabase.from("artist").insert({ name, url });
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath(LIST_PATH);
   return { ok: true };
 }
 
@@ -32,25 +29,33 @@ export async function updateArtistAction(
   id: number,
   formData: FormData,
 ): Promise<ArtistActionResult> {
-  const supabase = await getAuthClient();
-  if (!supabase) return { ok: false, error: "No autorizado." };
+  const auth = await requireStaffActionClient();
+  if (!auth.ok) return auth;
 
-  const name = String(formData.get("name") ?? "").trim();
+  const name = getString(formData, "name");
   if (!name) return { ok: false, error: "El nombre es obligatorio." };
-  const url = String(formData.get("url") ?? "").trim() || null;
+  const url = getOptionalString(formData, "url");
 
-  const { error } = await supabase.from("artist").update({ name, url }).eq("id", id);
+  const { error } = await auth.supabase
+    .from("artist")
+    .update({ name, url })
+    .eq("id", id);
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath(LIST_PATH);
+  revalidatePath(`${LIST_PATH}/${id}`);
   return { ok: true };
 }
 
 export async function deleteArtistAction(
   id: number,
 ): Promise<ArtistActionResult> {
-  const supabase = await getAuthClient();
-  if (!supabase) return { ok: false, error: "No autorizado." };
+  const auth = await requireStaffActionClient();
+  if (!auth.ok) return auth;
 
-  const { error } = await supabase.from("artist").delete().eq("id", id);
+  const { error } = await auth.supabase.from("artist").delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath(LIST_PATH);
   return { ok: true };
 }
