@@ -5,20 +5,11 @@ import Link from "next/link";
 import { Trash2, X } from "lucide-react";
 import { registerCromoAction } from "@/app/(app)/cromos/registrar/actions";
 import { cromoPath } from "@/app/(app)/cromos/lib/slug";
+import { CELL_COUNT, computeCode } from "@/app/(app)/cromos/lib/code";
 import FilterIconButton from "./FilterIconButton";
 import type { Category } from "@/types/cromo";
 
-const CELL_COUNT   = 16;
-const CELL_PX      = 44; // celda más pequeña que en el registrar completo (60px)
-
-function computeCode(cells: boolean[]): number {
-  let total = 0;
-  for (let i = 0; i < CELL_COUNT; i++) {
-    if (!cells[i]) continue;
-    total += i === 0 ? -32768 : 2 ** (15 - i);
-  }
-  return total;
-}
+const CELL_PX = 44; // celda más pequeña que en el registrar completo (60px)
 
 type SubmitActionResult =
   | { ok: true; idSlug?: string; uniqueId: number }

@@ -3,17 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { requireStaffActionClient } from "../../lib/actionAuth";
 import { getFile } from "../../lib/formData";
-import {
-  CROMO_SMALLINT_MAX,
-  CROMO_SMALLINT_MIN,
-  CROMO_SMALLINT_RANGE,
-  parseCromoFields,
-} from "../../lib/cromoSchema";
+import { parseCromoFields } from "../../lib/cromoSchema";
 import {
   buildCromoImagePaths,
   safeRemoveFromBucket,
   uploadCromoWebp,
 } from "../../lib/cromoStorage";
+import {
+  SMALLINT_RANGE,
+  pickUniqueCodes,
+} from "../../lib/codeGeneration";
 import {
   isNumber,
   isRpcFailure,
@@ -66,7 +65,7 @@ export async function generateCodesAction(
     if (typeof row.code === "number") used.add(row.code);
   }
 
-  const free = CROMO_SMALLINT_RANGE - used.size;
+  const free = SMALLINT_RANGE - used.size;
   if (copies > free) {
     return {
       ok: false,
@@ -74,38 +73,8 @@ export async function generateCodesAction(
     };
   }
 
-  // Densidad alta → rejection-sampling es costoso; usamos Fisher-Yates parcial
-  // sobre el conjunto libre cuando >50% del rango está ocupado.
-  const codes =
-    used.size > CROMO_SMALLINT_RANGE / 2
-      ? pickFromFreePool(used, copies)
-      : rejectionSample(used, copies);
-
+  const codes = pickUniqueCodes(used, copies);
   return { ok: true, codes };
-}
-
-function rejectionSample(used: Set<number>, copies: number): number[] {
-  const codes: number[] = [];
-  while (codes.length < copies) {
-    const r = Math.floor(Math.random() * CROMO_SMALLINT_RANGE) + CROMO_SMALLINT_MIN;
-    if (!used.has(r)) {
-      used.add(r);
-      codes.push(r);
-    }
-  }
-  return codes;
-}
-
-function pickFromFreePool(used: Set<number>, copies: number): number[] {
-  const pool: number[] = [];
-  for (let i = CROMO_SMALLINT_MIN; i <= CROMO_SMALLINT_MAX; i++) {
-    if (!used.has(i)) pool.push(i);
-  }
-  for (let i = 0; i < copies; i++) {
-    const j = i + Math.floor(Math.random() * (pool.length - i));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, copies);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
