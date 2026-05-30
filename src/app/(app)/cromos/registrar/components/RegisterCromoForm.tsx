@@ -6,26 +6,12 @@ import { Trash2 } from "lucide-react";
 import CornerButton from "@/components/ui/CornerButton";
 import FilterIconButton from "../../components/FilterIconButton";
 import { cromoPath } from "../../lib/slug";
+import { CELL_COUNT, computeCode } from "../../lib/code";
 import { registerCromoAction } from "../actions";
 import type { Category } from "@/types/cromo";
 
 interface RegisterCromoFormProps {
   categories: Category[];
-}
-
-const CELL_COUNT = 16;
-
-// Interpretación como entero de 16 bits con signo (complemento a 2):
-//   - celda 0 (arriba-izquierda) es el bit de signo, peso -2^15 = -32768
-//   - celdas 1..15 son los bits 14..0, pesos 2^14 .. 2^0
-// Esto encaja exactamente en el rango smallint de Postgres (-32768..32767).
-function computeCode(cells: boolean[]): number {
-  let total = 0;
-  for (let i = 0; i < CELL_COUNT; i++) {
-    if (!cells[i]) continue;
-    total += i === 0 ? -32768 : 2 ** (15 - i);
-  }
-  return total;
 }
 
 export default function RegisterCromoForm({ categories }: RegisterCromoFormProps) {

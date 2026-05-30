@@ -5,6 +5,7 @@ import { getStorageUrl, getThumbUrl } from "@/lib/supabase/storage";
 import type { CromoDetail, CromoOwnershipState, OwnedUnique } from "@/types/cromo";
 import { buildIdSlug, parseIdSlug, slugify } from "./slug";
 import { sortCromosDefault } from "./sort";
+import { isVisibleInAlbum } from "./visibility";
 
 interface CromoQueryRow {
   id: number;
@@ -38,21 +39,6 @@ function computeOwnershipState(
   if (currentlyOwned.length > 0) return "owned";
   if (hasEverOwned) return "formerly_owned";
   return "never_owned";
-}
-
-// ─── Visibility in album ─────────────────────────────────────────────────────
-
-function isVisibleInAlbum(
-  labels: { hide_til_registered: boolean; for_loukou: boolean },
-  hasEverOwned: boolean,
-  isUserLoukou: boolean,
-  isUserSuperuser: boolean,
-): boolean {
-  if (isUserSuperuser) return true;
-  if (hasEverOwned) return true;
-  if (labels.hide_til_registered) return false;
-  if (labels.for_loukou && !isUserLoukou) return false;
-  return true;
 }
 
 // ─── Map row → CromoDetail ───────────────────────────────────────────────────
