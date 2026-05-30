@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LogOut, Pencil, UserCog } from "lucide-react";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getStorageUrl } from "@/lib/supabase/storage";
+import { getStorageUrl, DEFAULT_AVATAR_PATH } from "@/lib/supabase/storage";
 import ProfilePanels from "./components/ProfilePanels";
+import ProfileAvatar from "./components/ProfileAvatar";
 import { logoutAction } from "./actions";
-
-const DEFAULT_AVATAR_PATH = "profiles/default_profile.webp";
 
 export const metadata: Metadata = {
   title: "SolarHub - Perfil",
@@ -77,16 +75,7 @@ export default async function PerfilPage() {
       </Link>
 
       <header className="w-full flex flex-col items-center gap-4 mb-12">
-        <div className="relative w-32 h-32 rounded-full overflow-hidden border border-zinc-700">
-          <Image
-            src={avatarUrl}
-            alt={profile?.username ?? "avatar"}
-            fill
-            sizes="128px"
-            className="object-cover"
-            priority
-          />
-        </div>
+        <ProfileAvatar avatarUrl={avatarUrl} username={profile?.username ?? "avatar"} />
         <h1 className="text-4xl font-bold text-white text-center">
           {profile?.username ?? "—"}
         </h1>
