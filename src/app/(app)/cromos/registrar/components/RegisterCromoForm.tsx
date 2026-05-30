@@ -73,7 +73,7 @@ export default function RegisterCromoForm({ categories }: RegisterCromoFormProps
       setLastIdSlug(result.idSlug);
       setMessage({ tone: "success", text: "Cromo registrado correctamente." });
     } else {
-      setMessage({ tone: "error", text: result.message });
+      setMessage({ tone: "error", text: result.error });
     }
   };
 

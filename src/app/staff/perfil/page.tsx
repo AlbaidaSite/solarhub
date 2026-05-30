@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { requireStaff } from "../lib/auth";
-import StaffBackButton from "../components/StaffBackButton";
+import StaffPageShell from "../components/StaffPageShell";
 import { PendingRequestsTable, type PendingRow } from "./components/RequestsAdminList";
 import UsersAdminList, { type UserRow } from "./components/UsersAdminList";
 
@@ -16,13 +16,7 @@ export default async function StaffPerfilPage() {
   ]);
 
   return (
-    <div className="relative w-full min-h-full p-6 flex flex-col gap-6">
-      <div className="absolute top-4 left-4">
-        <StaffBackButton />
-      </div>
-
-      <h1 className="text-3xl font-bold text-white text-center mt-12">Perfil</h1>
-
+    <StaffPageShell title="Perfil">
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold text-white/80">Solicitudes pendientes</h2>
         <PendingRequestsTable rows={(pending ?? []) as PendingRow[]} />
@@ -34,6 +28,6 @@ export default async function StaffPerfilPage() {
         <h2 className="text-lg font-semibold text-white/80">Usuarios</h2>
         <UsersAdminList rows={(users ?? []) as UserRow[]} isSuperuser={Boolean(isSuperuser)} />
       </section>
-    </div>
+    </StaffPageShell>
   );
 }

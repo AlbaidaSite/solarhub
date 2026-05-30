@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Repeat, X } from "lucide-react";
 import CornerButton from "@/components/ui/CornerButton";
@@ -40,6 +41,8 @@ export default function CromoModal({
   const showFullInfo = cromo.ownershipState !== "never_owned";
 
   const toggleUniqueSelected = (uniqueId: number) => {
+    const target = cromo.userOwnedUniques.find((u) => u.uniqueId === uniqueId);
+    if (target?.inTrade) return;
     setTradeError(null);
     setSelectedUniqueIds((prev) =>
       prev.includes(uniqueId)
@@ -113,7 +116,11 @@ export default function CromoModal({
 
   return (
     <div
-      className="fixed inset-0 z-40 bg-black/87 backdrop-blur-md overflow-y-auto md:overflow-hidden scrollbar-clean"
+      className={`fixed inset-0 z-40 bg-black/87 backdrop-blur-md scrollbar-clean ${
+        showTradePanel
+          ? "overflow-hidden"
+          : "overflow-y-auto md:overflow-hidden"
+      }`}
       onClick={onClose}
     >
       <button
@@ -320,15 +327,20 @@ export default function CromoModal({
                     <div className="flex flex-wrap gap-2">
                       {cromo.userOwnedUniques.map((u) => {
                         const sel = selectedUniqueIds.includes(u.uniqueId);
+                        const disabled = u.inTrade;
                         return (
                           <button
                             key={u.uniqueId}
                             type="button"
                             onClick={() => toggleUniqueSelected(u.uniqueId)}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                              sel
-                                ? "bg-amber-300/20 border-amber-300/60 text-amber-200"
-                                : "bg-white/5 border-white/15 text-white/70 hover:bg-white/10"
+                            disabled={disabled}
+                            title={disabled ? "Esta copia ya está en un intercambio" : undefined}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                              disabled
+                                ? "bg-white/5 border-white/10 text-white/30 line-through cursor-not-allowed"
+                                : sel
+                                  ? "bg-amber-300/20 border-amber-300/60 text-amber-200 cursor-pointer"
+                                  : "bg-white/5 border-white/15 text-white/70 hover:bg-white/10 cursor-pointer"
                             }`}
                           >
                             #{u.copyNumber}
@@ -364,21 +376,28 @@ export default function CromoModal({
         </div>
       </div>
 
-      {showTradePanel && (
-        <div
-          className="absolute inset-0 z-50 bg-black/90 backdrop-blur-sm p-8 overflow-y-auto scrollbar-clean"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <TradeCromoPanel
-            cromoName={cromo.name}
-            selectedUniqueIds={selectedUniqueIds}
-            onClose={() => {
-              setShowTradePanel(false);
-              setSelectedUniqueIds([]);
-            }}
-          />
-        </div>
-      )}
+      {/* Portal a document.body: el modal de cromo lleva backdrop-filter, lo
+          que crea un containing block para hijos position:fixed. Si el panel
+          se renderiza dentro, "fixed" se ancla al modal scrolleado (no al
+          viewport) y aparece en la parte de arriba del modal en vez de donde
+          mira el usuario. Sacándolo del árbol DOM esto se resuelve. */}
+      {showTradePanel &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm p-8 overflow-y-auto overscroll-contain scrollbar-clean"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <TradeCromoPanel
+              cromoName={cromo.name}
+              selectedUniqueIds={selectedUniqueIds}
+              onClose={() => {
+                setShowTradePanel(false);
+                setSelectedUniqueIds([]);
+              }}
+            />
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

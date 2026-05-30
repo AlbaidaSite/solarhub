@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { requireStaff } from "../../lib/auth";
-import StaffBackButton from "../../components/StaffBackButton";
+import StaffPageShell from "../../components/StaffPageShell";
 import CromoEditForm from "./components/CromoEditForm";
 
 export const metadata: Metadata = { title: "Staff · Editar cromo | SolarHub" };
@@ -79,15 +79,11 @@ export default async function StaffEditCromoPage({
   );
 
   return (
-    <div className="relative w-full min-h-full p-6 flex flex-col gap-6">
-      <div className="absolute top-4 left-4">
-        <StaffBackButton href="/staff/cromos" label="Volver al listado" />
-      </div>
-
-      <h1 className="text-3xl font-bold text-white text-center mt-12">
-        Editar cromo #{cromo.number} — {cromo.name}
-      </h1>
-
+    <StaffPageShell
+      title={`Editar cromo #${cromo.number} — ${cromo.name}`}
+      backHref="/staff/cromos"
+      backLabel="Volver al listado"
+    >
       <CromoEditForm
         cromoId={cromo.id}
         labelsId={cromo.labels_id}
@@ -112,6 +108,6 @@ export default async function StaffEditCromoPage({
         rarities={rarRes.data ?? []}
         artists={artRes.data ?? []}
       />
-    </div>
+    </StaffPageShell>
   );
 }

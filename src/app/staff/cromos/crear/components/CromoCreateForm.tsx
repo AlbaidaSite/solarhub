@@ -4,6 +4,11 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import ArtistMultiSelect, { type ArtistOption } from "./ArtistMultiSelect";
 import CodeGridPreview from "./CodeGridPreview";
+import {
+  Field,
+  FIELD_CLASS,
+  LABEL_CLASS,
+} from "../../../components/form";
 import { createCromoAction, generateCodesAction } from "../actions";
 import { downloadCromoCodesZip } from "@/scripts/generator";
 
@@ -37,12 +42,6 @@ interface CromoCreateFormProps {
   rarities: RarityOpt[];
   artists: ArtistOption[];
 }
-
-// Estilos compartidos entre inputs/textareas/selects para mantener
-// coherencia visual sin repetir clases en cada campo.
-const FIELD_CLASS =
-  "w-full px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-white text-sm placeholder-white/40 focus:outline-none focus:border-amber-300 transition-colors";
-const LABEL_CLASS = "text-xs font-semibold text-white/70 uppercase tracking-wide";
 
 export default function CromoCreateForm({
   categories,
@@ -97,16 +96,22 @@ export default function CromoCreateForm({
   const handleGenerate = () => {
     setGenerateError(null);
     setCreateError(null);
+
     const catId = Number(categoryId);
     const cop = Number(copies);
+
+    const errors: string[] = [];
     if (!Number.isInteger(catId) || catId <= 0) {
-      setGenerateError("Selecciona una categoría primero.");
-      return;
+      errors.push("Selecciona una categoría primero.");
     }
     if (!Number.isInteger(cop) || cop <= 0) {
-      setGenerateError("Indica el número de copias (entero positivo).");
+      errors.push("Indica el número de copias (entero positivo).");
+    }
+    if (errors.length > 0) {
+      setGenerateError(errors.join("\n"));
       return;
     }
+
     startGenerating(async () => {
       const result = await generateCodesAction(catId, cop);
       if (result.ok) {
@@ -120,22 +125,23 @@ export default function CromoCreateForm({
 
   const handleCreate = () => {
     setCreateError(null);
+
+    // Acumulamos todos los problemas antes de devolver, así el usuario ve la
+    // lista completa de avisos en un único intento.
+    const errors: string[] = [];
     if (!codes || codes.length === 0) {
-      setCreateError("Genera primero los códigos.");
-      return;
-    }
-    if (!codesValid || !codesNumeric) {
-      setCreateError(
+      errors.push("Genera primero los códigos.");
+    } else if (!codesValid || !codesNumeric) {
+      errors.push(
         `Hay códigos inválidos. Cada code debe ser un entero en [${SMALLINT_MIN}, ${SMALLINT_MAX}].`,
       );
-      return;
     }
-    if (!frontImage || !backImage) {
-      setCreateError("Faltan las imágenes (frente y dorso).");
-      return;
-    }
-    if (!name.trim()) {
-      setCreateError("El nombre es obligatorio.");
+    if (!frontImage) errors.push("Falta la imagen frontal.");
+    if (!backImage) errors.push("Falta la imagen del dorso.");
+    if (!name.trim()) errors.push("El nombre es obligatorio.");
+
+    if (errors.length > 0) {
+      setCreateError(errors.join("\n"));
       return;
     }
 
@@ -156,8 +162,8 @@ export default function CromoCreateForm({
     fd.append("hidden", hidden ? "true" : "false");
     fd.append("artistIds", JSON.stringify(artistIds));
     fd.append("codes", JSON.stringify(finalCodes));
-    fd.append("frontImage", frontImage);
-    fd.append("backImage", backImage);
+    fd.append("frontImage", frontImage!);
+    fd.append("backImage", backImage!);
 
     startCreating(async () => {
       const result = await createCromoAction(fd);
@@ -357,7 +363,9 @@ export default function CromoCreateForm({
         </button>
 
         {generateError && (
-          <p className="text-red-400 text-sm">{generateError}</p>
+          <p className="text-red-400 text-sm whitespace-pre-line">
+            {generateError}
+          </p>
         )}
       </div>
 
@@ -441,19 +449,14 @@ export default function CromoCreateForm({
                 Hay códigos inválidos: deben ser enteros en [{SMALLINT_MIN}, {SMALLINT_MAX}].
               </p>
             )}
-            {createError && <p className="text-red-400 text-sm">{createError}</p>}
+            {createError && (
+              <p className="text-red-400 text-sm whitespace-pre-line">
+                {createError}
+              </p>
+            )}
           </>
         )}
       </div>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className={LABEL_CLASS}>{label}</span>
-      {children}
-    </label>
   );
 }

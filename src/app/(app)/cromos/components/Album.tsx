@@ -32,11 +32,13 @@ export default async function Album() {
     supabase
       .from("category")
       .select("id, name, icon_path, order_number")
-      .order("order_number", { ascending: true }),
+      .order("order_number", { ascending: true })
+      .returns<CategoryQueryRow[]>(),
     supabase
       .from("rarity")
       .select("id, name, icon_path")
-      .order("id", { ascending: true }),
+      .order("id", { ascending: true })
+      .returns<RarityQueryRow[]>(),
   ]);
 
   if (categoriesRes.error) {
@@ -46,17 +48,14 @@ export default async function Album() {
     return <p className="p-4 text-red-500">Error cargando rarezas: {raritiesRes.error.message}</p>;
   }
 
-  const categoryRows = (categoriesRes.data ?? []) as unknown as CategoryQueryRow[];
-  const rarityRows = (raritiesRes.data ?? []) as unknown as RarityQueryRow[];
-
-  const categories: Category[] = categoryRows.map((c) => ({
+  const categories: Category[] = (categoriesRes.data ?? []).map((c) => ({
     id: c.id,
     name: c.name,
     icon_path: getStorageUrl(c.icon_path),
     order_number: c.order_number,
   }));
 
-  const rarities: Rarity[] = rarityRows.map((r) => ({
+  const rarities: Rarity[] = (raritiesRes.data ?? []).map((r) => ({
     id: r.id,
     name: r.name,
     icon_path: getStorageUrl(r.icon_path),
