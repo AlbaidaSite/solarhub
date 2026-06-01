@@ -1,23 +1,17 @@
 "use server";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+import { requireStaffActionClient } from "../lib/actionAuth";
 
-export type DeleteCromoResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type DeleteCromoResult = { ok: true } | { ok: false; error: string };
 
 export async function deleteCromoAction(id: number): Promise<DeleteCromoResult> {
-  const supabase = await createSupabaseServerClient();
+  const auth = await requireStaffActionClient();
+  if (!auth.ok) return auth;
 
-  const { data: isStaff, error: authError } = await supabase.rpc("is_staff");
-  if (authError || !isStaff) {
-    return { ok: false, error: "No autorizado." };
-  }
+  const { error } = await auth.supabase.from("cromo").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
 
-  const { error } = await supabase.from("cromo").delete().eq("id", id);
-  if (error) {
-    return { ok: false, error: error.message };
-  }
-
+  revalidatePath("/staff/cromos");
   return { ok: true };
 }

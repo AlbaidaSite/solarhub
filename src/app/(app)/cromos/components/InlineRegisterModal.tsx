@@ -5,25 +5,15 @@ import Link from "next/link";
 import { Trash2, X } from "lucide-react";
 import { registerCromoAction } from "@/app/(app)/cromos/registrar/actions";
 import { cromoPath } from "@/app/(app)/cromos/lib/slug";
+import { CELL_COUNT, computeCode } from "@/app/(app)/cromos/lib/code";
 import FilterIconButton from "./FilterIconButton";
 import type { Category } from "@/types/cromo";
 
-const SMALLINT_MIN = -32768;
-const CELL_COUNT   = 16;
-const CELL_PX      = 44; // celda más pequeña que en el registrar completo (60px)
-
-function computeCode(cells: boolean[]): number {
-  let total = 0;
-  for (let i = 0; i < CELL_COUNT; i++) {
-    if (!cells[i]) continue;
-    total += i === 0 ? -32768 : 2 ** (15 - i);
-  }
-  return total;
-}
+const CELL_PX = 44; // celda más pequeña que en el registrar completo (60px)
 
 type SubmitActionResult =
   | { ok: true; idSlug?: string; uniqueId: number }
-  | { ok: false; message: string };
+  | { ok: false; error: string };
 
 interface InlineRegisterModalProps {
   categories: Category[];
@@ -88,7 +78,7 @@ export default function InlineRegisterModal({
           setMessage({ tone: "success", text: "Cromo registrado correctamente." });
         }
       } else {
-        setMessage({ tone: "error", text: result.message });
+        setMessage({ tone: "error", text: result.error });
       }
     });
   };

@@ -4,10 +4,16 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { generateCodesAction } from "../../crear/actions";
 import { updateCromoAction } from "../actions";
+import { downloadCromoCodesZip } from "@/scripts/generator";
 import ArtistMultiSelect, {
   type ArtistOption,
 } from "../../crear/components/ArtistMultiSelect";
 import CodeGridPreview from "../../crear/components/CodeGridPreview";
+import {
+  Field,
+  FIELD_CLASS,
+  LABEL_CLASS,
+} from "../../../components/form";
 
 interface CategoryOpt { id: number; name: string }
 interface RarityOpt   { id: number; name: string }
@@ -49,10 +55,6 @@ function parseCode(raw: string): number | null {
   const n = Number(s);
   return Number.isInteger(n) && n >= SMALLINT_MIN && n <= SMALLINT_MAX ? n : null;
 }
-
-const FIELD_CLASS =
-  "w-full px-3 py-2 rounded-lg bg-white/5 border border-white/15 text-white text-sm placeholder-white/40 focus:outline-none focus:border-amber-300 transition-colors";
-const LABEL_CLASS = "text-xs font-semibold text-white/70 uppercase tracking-wide";
 
 export default function CromoEditForm({
   cromoId,
@@ -127,13 +129,20 @@ export default function CromoEditForm({
 
   const handleSave = () => {
     setSaveError(null);
-    if (!codesValid) {
-      setSaveError(`Hay códigos inválidos. Deben ser enteros en [${SMALLINT_MIN}, ${SMALLINT_MAX}].`);
-      return;
-    }
+
     const finalCopies = parseInt(copies, 10);
+    const errors: string[] = [];
+    if (!codesValid) {
+      errors.push(
+        `Hay códigos inválidos. Deben ser enteros en [${SMALLINT_MIN}, ${SMALLINT_MAX}].`,
+      );
+    }
     if (codes.length !== finalCopies) {
-      setSaveError("El número de códigos no coincide con las copias.");
+      errors.push("El número de códigos no coincide con las copias.");
+    }
+    if (!name.trim()) errors.push("El nombre es obligatorio.");
+    if (errors.length > 0) {
+      setSaveError(errors.join("\n"));
       return;
     }
 
@@ -161,8 +170,15 @@ export default function CromoEditForm({
     startSaving(async () => {
       const result = await updateCromoAction(cromoId, labelsId, fd);
       if (result.ok) {
+        try {
+          await downloadCromoCodesZip(finalCodes, name.trim(), Number(number));
+        } catch (err) {
+          console.error("Error generando ZIP:", err);
+        }
+        // No usar router.refresh() aquí: lanzado en paralelo a router.push()
+        // cancela la navegación. La caché del destino se invalida ya con
+        // revalidatePath() dentro de la action.
         router.push("/staff/cromos");
-        router.refresh();
       } else {
         setSaveError(result.error);
       }
@@ -171,7 +187,7 @@ export default function CromoEditForm({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-6xl mx-auto w-full">
-      {/* ── COLUMNA IZQUIERDA: FORMULARIO ───────────────────────────────── */}
+      {/* ── COLUMNA IZQUIERDA: FORMULARIO ──────────────────────────── */}
       <div className="rounded-xl border border-white/15 bg-black/30 p-5 flex flex-col gap-4">
         <h2 className="text-lg font-bold text-white">Datos del cromo</h2>
 
@@ -255,7 +271,7 @@ export default function CromoEditForm({
         </div>
       </div>
 
-      {/* ── COLUMNA DERECHA: UNIQUES / CODES ──────────────────────────── */}
+      {/* ── COLUMNA DERECHA: UNIQUES / CODES ─────────────────────── */}
       <div className="rounded-xl border border-white/15 bg-black/30 p-5 flex flex-col gap-4">
         <h2 className="text-lg font-bold text-white">Códigos por copia</h2>
 
@@ -276,7 +292,11 @@ export default function CromoEditForm({
               className="w-full px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-semibold transition-colors cursor-pointer">
               {isGenerating ? "Generando…" : "Generar códigos adicionales"}
             </button>
-            {generateError && <p className="text-red-400 text-sm">{generateError}</p>}
+            {generateError && (
+              <p className="text-red-400 text-sm whitespace-pre-line">
+                {generateError}
+              </p>
+            )}
           </div>
         )}
 
@@ -340,17 +360,12 @@ export default function CromoEditForm({
             Hay códigos inválidos: deben ser enteros en [{SMALLINT_MIN}, {SMALLINT_MAX}].
           </p>
         )}
-        {saveError && <p className="text-red-400 text-sm">{saveError}</p>}
+        {saveError && (
+          <p className="text-red-400 text-sm whitespace-pre-line">
+            {saveError}
+          </p>
+        )}
       </div>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className={LABEL_CLASS}>{label}</span>
-      {children}
-    </label>
   );
 }

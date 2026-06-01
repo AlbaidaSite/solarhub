@@ -105,7 +105,7 @@ export default function TradeCromoPanel({
   };
 
   return (
-    <div className="flex flex-col gap-5 h-full overflow-y-auto scrollbar-clean mt-19">
+    <div className="flex flex-col gap-5 h-full overflow-y-auto scrollbar-clean mt-2">
       {/* Cabecera */}
       <div className="flex items-start justify-between gap-3">
         <h2 className="text-base font-bold text-white leading-tight">
@@ -135,7 +135,7 @@ export default function TradeCromoPanel({
         <p className="text-white/40 text-sm">Cargando…</p>
       ) : (
         <>
-          {/* ── Añadir a intercambio existente ─────────────── */}
+          {/* ── Añadir a intercambio existente ────────── */}
           {ctx.openTrades.length > 0 && (
             <div className="flex flex-col gap-2">
               <p className="text-xs text-white/60 font-semibold uppercase tracking-wide">
@@ -158,7 +158,7 @@ export default function TradeCromoPanel({
             </div>
           )}
 
-          {/* ── Iniciar nuevo intercambio ───────────────────── */}
+          {/* ── Iniciar nuevo intercambio ──────────────── */}
           <div className="flex flex-col gap-2">
             <p className="text-xs text-white/60 font-semibold uppercase tracking-wide">
               Iniciar nuevo intercambio

@@ -110,7 +110,7 @@ export default function AlbumGrid({ cromos, categories, rarities, isSuperuser }:
 
       {visibleCromos.length === 0 && !showAll && !showSuperAll ? (
         <p className="text-center text-zinc-400 px-8 py-16 max-w-md mx-auto leading-relaxed">
-          Ahora mismo no tienes ningún cromo, registra alguno pulsando el botón con círculos de arriba a la derecha o mira cómo conseguirlos pulsando el botón{" "}
+          Ahora mismo no tienes ningún cromo con estas características, registra alguno pulsando el botón con círculos de arriba a la derecha o mira cómo conseguirlos pulsando el botón{" "}
           <Eye size={14} className="inline-block align-middle" />{" "}
           de arriba a la izquierda.
         </p>

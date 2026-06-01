@@ -5,6 +5,7 @@ import { getStorageUrl, getThumbUrl } from "@/lib/supabase/storage";
 import type { CromoDetail, CromoOwnershipState, OwnedUnique } from "@/types/cromo";
 import { buildIdSlug, parseIdSlug, slugify } from "./slug";
 import { sortCromosDefault } from "./sort";
+import { isVisibleInAlbum } from "./visibility";
 
 interface CromoQueryRow {
   id: number;
@@ -29,8 +30,6 @@ const CROMO_SELECT = `id, name, number, variant, description, copies, how_to, ho
   category:category_id(id, name, icon_path, order_number),
   cromo_artist(artist:artist_id(name, url))`;
 
-const LOCKED_IMG_PATH = "cromos/locked.webp";
-
 // ─── Ownership state ─────────────────────────────────────────────────────────
 
 function computeOwnershipState(
@@ -40,21 +39,6 @@ function computeOwnershipState(
   if (currentlyOwned.length > 0) return "owned";
   if (hasEverOwned) return "formerly_owned";
   return "never_owned";
-}
-
-// ─── Visibility in album ─────────────────────────────────────────────────────
-
-function isVisibleInAlbum(
-  labels: { hide_til_registered: boolean; for_loukou: boolean },
-  hasEverOwned: boolean,
-  isUserLoukou: boolean,
-  isUserSuperuser: boolean,
-): boolean {
-  if (isUserSuperuser) return true;
-  if (hasEverOwned) return true;
-  if (labels.hide_til_registered) return false;
-  if (labels.for_loukou && !isUserLoukou) return false;
-  return true;
 }
 
 // ─── Map row → CromoDetail ───────────────────────────────────────────────────
@@ -113,34 +97,59 @@ async function fetchRawCromoRows(
     .from("cromo")
     .select(CROMO_SELECT)
     .order("number", { ascending: true })
-    .order("variant", { ascending: true });
+    .order("variant", { ascending: true })
+    .returns<CromoQueryRow[]>();
 
   if (error) throw new Error(`Error cargando cromos: ${error.message}`);
-  return (data ?? []) as unknown as CromoQueryRow[];
+  return data ?? [];
 }
 
 // Retorna Map<cromo_id, OwnedUnique[]> — copias que el usuario posee ACTUALMENTE.
+// `inTradeIds` marca las copias ya comprometidas en un intercambio abierto.
 async function fetchUserOwnedUniquesMap(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   userId: string,
+  inTradeIds: Set<number>,
 ): Promise<Map<number, OwnedUnique[]>> {
+  type Row = { unique_cromo: { id: number; copy_number: number; cromo_id: number } | null };
   const { data } = await supabase
     .from("unique_ownership")
     .select("unique_cromo!inner(id, copy_number, cromo_id)")
     .eq("user_id", userId)
-    .eq("is_current_owner", true);
+    .eq("is_current_owner", true)
+    .returns<Row[]>();
 
   const map = new Map<number, OwnedUnique[]>();
-  for (const row of (data ?? []) as unknown as Array<{
-    unique_cromo: { id: number; copy_number: number; cromo_id: number };
-  }>) {
+  for (const row of data ?? []) {
     const uc = row.unique_cromo;
     if (!uc) continue;
     const list = map.get(uc.cromo_id) ?? [];
-    list.push({ uniqueId: uc.id, copyNumber: uc.copy_number });
+    list.push({
+      uniqueId: uc.id,
+      copyNumber: uc.copy_number,
+      inTrade: inTradeIds.has(uc.id),
+    });
     map.set(uc.cromo_id, list);
   }
   return map;
+}
+
+// Retorna el set de unique_ids del usuario que ya están dentro de algún
+// trade_offer cuyo trade siga abierto (is_mutual_agreement = false).
+async function fetchUserInTradeUniqueIds(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  userId: string,
+): Promise<Set<number>> {
+  const { data } = await supabase
+    .from("trade_unique")
+    .select("unique_id, trade_offer!inner(user_id, trade:trade_id!inner(is_mutual_agreement))")
+    .eq("trade_offer.user_id", userId)
+    .eq("trade_offer.trade.is_mutual_agreement", false)
+    .returns<Array<{ unique_id: number }>>();
+
+  const set = new Set<number>();
+  for (const row of data ?? []) set.add(row.unique_id);
+  return set;
 }
 
 // Retorna Map<cromo_id, { firstAcquiredAt }> — historial completo del usuario,
@@ -149,17 +158,16 @@ async function fetchUserEverOwnedMap(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   userId: string,
 ): Promise<Map<number, { firstAcquiredAt: string }>> {
+  type Row = { date_acquired: string | null; unique_cromo: { cromo_id: number } | null };
   const { data } = await supabase
     .from("unique_ownership")
     .select("date_acquired, unique_cromo!inner(cromo_id)")
     .eq("user_id", userId)
-    .order("date_acquired", { ascending: true });
+    .order("date_acquired", { ascending: true })
+    .returns<Row[]>();
 
   const map = new Map<number, { firstAcquiredAt: string }>();
-  for (const row of (data ?? []) as unknown as Array<{
-    date_acquired: string | null;
-    unique_cromo: { cromo_id: number };
-  }>) {
+  for (const row of data ?? []) {
     const cromoId = row.unique_cromo?.cromo_id;
     if (cromoId != null && !map.has(cromoId) && row.date_acquired) {
       map.set(cromoId, { firstAcquiredAt: row.date_acquired });
@@ -177,11 +185,11 @@ async function fetchAlbumContext() {
   } = await supabase.auth.getUser();
   const userId = user?.id;
 
-  const [rows, ownedMap, everOwnedMap, loukou, superuser] = await Promise.all([
+  const [rows, inTradeIds, everOwnedMap, loukou, superuser] = await Promise.all([
     fetchRawCromoRows(supabase),
     userId
-      ? fetchUserOwnedUniquesMap(supabase, userId)
-      : Promise.resolve(new Map<number, OwnedUnique[]>()),
+      ? fetchUserInTradeUniqueIds(supabase, userId)
+      : Promise.resolve(new Set<number>()),
     userId
       ? fetchUserEverOwnedMap(supabase, userId)
       : Promise.resolve(new Map<number, { firstAcquiredAt: string }>()),
@@ -192,6 +200,10 @@ async function fetchAlbumContext() {
       ? supabase.rpc("is_superuser").then((r) => Boolean(r.data))
       : Promise.resolve(false),
   ]);
+
+  const ownedMap = userId
+    ? await fetchUserOwnedUniquesMap(supabase, userId, inTradeIds)
+    : new Map<number, OwnedUnique[]>();
 
   return { rows, ownedMap, everOwnedMap, loukou, superuser };
 }

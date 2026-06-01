@@ -161,7 +161,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
     if (result.ok) {
       setExistingMedia((prev) => prev.filter((m) => m.id !== mediaId));
     } else {
-      setDeleteMediaError(result.error ?? "Error al eliminar el archivo");
+      setDeleteMediaError(result.error);
     }
   };
 

@@ -97,7 +97,7 @@ export default function TradeListClient({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ── Iniciar intercambio ───────────────────────────────── */}
+      {/* ── Iniciar intercambio ──────────────────────────── */}
       <div ref={dropdownRef} className="relative">
         <div className="relative flex items-center gap-2 rounded-xl bg-white/5 border border-white/15 px-3 py-2 focus-within:border-amber-300 transition-colors">
           <Search size={16} className="text-white/50 shrink-0" />
@@ -144,7 +144,7 @@ export default function TradeListClient({
         {startError && <p className="mt-1 text-red-400 text-xs">{startError}</p>}
       </div>
 
-      {/* ── Lista de intercambios ─────────────────────────────── */}
+      {/* ── Lista de intercambios ────────────────────────── */}
       {trades.length === 0 ? (
         <p className="text-center text-white/40 py-8">No tienes intercambios abiertos.</p>
       ) : (
@@ -185,7 +185,7 @@ export default function TradeListClient({
         </div>
       )}
 
-      {/* ── Modal doble confirmación ─────────────────────────── */}
+      {/* ── Modal doble confirmación ────────────────────── */}
       {deleteState && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"

@@ -104,7 +104,7 @@ export default function TradeDetailClient({
       };
       return { ok: true as const, uniqueId: result.uniqueId };
     }
-    return { ok: false as const, message: result.message };
+    return { ok: false as const, error: result.error };
   };
 
   const handleAddedByCode = (_idSlug: string | null, _uniqueId: number) => {
