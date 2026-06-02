@@ -11,8 +11,11 @@ import {
 } from "lucide-react";
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
-import { supabase } from "@/lib/supabase/client";
-import { checkEmailStatusAction, reRegisterAction } from "./registerActions";
+import {
+  checkEmailStatusAction,
+  reRegisterAction,
+  submitRequestAction,
+} from "./registerActions";
 
 // "reregister" = deactivated account, no pending request → allow update
 type Step = "account" | "profile" | "reregister" | "success";
@@ -97,58 +100,20 @@ export default function RegisterRequestForm() {
     setError(null);
     setLoading(true);
 
-    const { data: usernameTaken, error: usernameErr } = await supabase.rpc(
-      "username_exists",
-      { username_to_check: username }
-    );
-
-    if (usernameErr) {
-      setError("No se pudo verificar el username. Inténtalo de nuevo.");
-      setLoading(false);
-      return;
-    }
-
-    if (usernameTaken) {
-      setError("Este username ya está en uso");
-      setLoading(false);
-      return;
-    }
-
-    const { data: authData, error: authErr } = await supabase.auth.signUp({
+    const result = await submitRequestAction(
       email,
       password,
-    });
+      username,
+      name,
+      message.trim() || null,
+    );
 
-    if (authErr || !authData.user) {
-      setError(authErr?.message ?? "No se pudo crear el usuario");
+    if (!result.ok) {
+      setError(result.error);
       setLoading(false);
       return;
     }
 
-    const userId = authData.user.id;
-
-    const { error: profileErr } = await supabase
-      .from("profile")
-      .insert({ id: userId, username, name });
-
-    if (profileErr) {
-      setError(profileErr.message);
-      setLoading(false);
-      return;
-    }
-
-    const { error: reqErr } = await supabase.from("request").insert({
-      user_id: userId,
-      message: message.trim() || null,
-    });
-
-    if (reqErr) {
-      setError(reqErr.message);
-      setLoading(false);
-      return;
-    }
-
-    await supabase.auth.signOut();
     setLoading(false);
     setStep("success");
   };
