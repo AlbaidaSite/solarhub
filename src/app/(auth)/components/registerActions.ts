@@ -1,6 +1,7 @@
 "use server";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { DEFAULT_AVATAR_PATH } from "@/lib/supabase/storage";
 
 export type EmailStatus =
   | "not_found"
@@ -80,14 +81,25 @@ export async function submitRequestAction(
   const userId = created.user.id;
 
   // Parte 2a: profile (el trigger crea credentials inactivas).
+  // profile_img arranca con el avatar compartido por defecto; el usuario
+  // lo reemplaza luego subiendo el suyo a profiles/{user_id}/.
   const { error: profileErr } = await admin
     .from("profile")
-    .insert({ id: userId, username, name });
+    .insert({ id: userId, username, name, profile_img: DEFAULT_AVATAR_PATH });
   if (profileErr) {
     // Sin profile no hay cuenta utilizable: limpiamos el auth user huérfano.
     await admin.auth.admin.deleteUser(userId);
     return { ok: false, error: profileErr.message };
   }
+
+  // El trigger trg_create_credentials_for_profile ya crea las credenciales
+  // con todos los flags a false, pero reforzamos is_active = false de forma
+  // explícita por si el default del esquema remoto difiere: la cuenta solo
+  // debe activarse al aprobar la request (trg_activate_credentials_on_request_approval).
+  await admin
+    .from("credentials")
+    .update({ is_active: false })
+    .eq("user_id", userId);
 
   // Parte 2b: request (is_approved defaults to null → pendiente).
   const { error: reqErr } = await admin
