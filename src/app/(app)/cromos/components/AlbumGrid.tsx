@@ -5,8 +5,11 @@ import { Eye, EyeClosed } from "lucide-react";
 import AlbumFilters from "./AlbumFilters";
 import CromoCard from "./CromoCard";
 import CromoModal from "./CromoModal";
+import Pagination from "@/components/ui/Pagination";
 import { compareCromos } from "../lib/sort";
 import type { Category, CromoDetail, Rarity, SortBy } from "@/types/cromo";
+
+const PAGE_SIZE =30;
 
 interface AlbumGridProps {
   cromos: CromoDetail[];
@@ -33,6 +36,7 @@ export default function AlbumGrid({ cromos, categories, rarities, isSuperuser }:
   const [showAll, setShowAll] = useState(false);
   // showSuperAll: solo accesible para superusuarios — muestra todo a color
   const [showSuperAll, setShowSuperAll] = useState(false);
+  const [page, setPage] = useState(1);
 
   const visibleCromos = useMemo(() => {
     const normalizedQuery = normalize(searchQuery.trim());
@@ -48,12 +52,26 @@ export default function AlbumGrid({ cromos, categories, rarities, isSuperuser }:
     return filtered.sort((a, b) => compareCromos(a, b, effectiveSort));
   }, [cromos, selectedCategoryId, selectedRarityId, sortBy, searchQuery, showAll, showSuperAll]);
 
-  const handleCategoryChange = (id: number | null) => { setSelectedCategoryId(id); setSelectedIndex(null); };
-  const handleRarityChange   = (id: number | null) => { setSelectedRarityId(id);   setSelectedIndex(null); };
-  const handleSortChange     = (sort: SortBy)       => { setSortBy(sort);           setSelectedIndex(null); };
-  const handleSearchChange   = (query: string)      => { setSearchQuery(query);     setSelectedIndex(null); };
-  const handleShowAllToggle  = ()                   => { setShowAll((s) => !s);     setSelectedIndex(null); };
-  const handleSuperAllToggle = ()                   => { setShowSuperAll((s) => !s); setSelectedIndex(null); };
+  // Cualquier cambio de filtro reinicia la paginación a la primera página.
+  const handleCategoryChange = (id: number | null) => { setSelectedCategoryId(id); setSelectedIndex(null); setPage(1); };
+  const handleRarityChange   = (id: number | null) => { setSelectedRarityId(id);   setSelectedIndex(null); setPage(1); };
+  const handleSortChange     = (sort: SortBy)       => { setSortBy(sort);           setSelectedIndex(null); setPage(1); };
+  const handleSearchChange   = (query: string)      => { setSearchQuery(query);     setSelectedIndex(null); setPage(1); };
+  const handleShowAllToggle  = ()                   => { setShowAll((s) => !s);     setSelectedIndex(null); setPage(1); };
+  const handleSuperAllToggle = ()                   => { setShowSuperAll((s) => !s); setSelectedIndex(null); setPage(1); };
+
+  // Paginación: 30 cromos por página. currentPage se acota por si el filtrado
+  // reduce el total por debajo de la página activa.
+  const totalPages = Math.max(1, Math.ceil(visibleCromos.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pagedCromos = visibleCromos.slice(pageStart, pageStart + PAGE_SIZE);
+
+  const handlePageChange = (p: number) => {
+    setPage(p);
+    setSelectedIndex(null);
+    document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const selected = selectedIndex !== null ? visibleCromos[selectedIndex] : null;
   const hasPrev  = selectedIndex !== null && selectedIndex > 0;
@@ -115,15 +133,23 @@ export default function AlbumGrid({ cromos, categories, rarities, isSuperuser }:
           de arriba a la izquierda.
         </p>
       ) : (
-        <div className="grid justify-center grid-cols-[repeat(auto-fill,minmax(130px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-6 p-4">
-          {visibleCromos.map((cromo, i) => (
-            <CromoCard
-              key={`${cromo.number}-${cromo.variant}`}
-              cromo={display(cromo)}
-              onClick={() => setSelectedIndex(i)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid justify-center grid-cols-[repeat(auto-fill,minmax(130px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-6 p-4">
+            {pagedCromos.map((cromo, i) => (
+              <CromoCard
+                key={`${cromo.number}-${cromo.variant}`}
+                cromo={display(cromo)}
+                onClick={() => setSelectedIndex(pageStart + i)}
+              />
+            ))}
+          </div>
+
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
+          />
+        </>
       )}
 
       {selected && (
