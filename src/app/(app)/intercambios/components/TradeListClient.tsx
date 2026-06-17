@@ -141,7 +141,7 @@ export default function TradeListClient({
           </div>
         )}
 
-        {startError && <p className="mt-1 text-red-400 text-xs">{startError}</p>}
+        {startError && <p className="mt-1 text-chip text-red-400 text-xs">{startError}</p>}
       </div>
 
       {/* ── Lista de intercambios ────────────────────────── */}
