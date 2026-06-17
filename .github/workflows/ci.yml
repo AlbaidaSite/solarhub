@@ -1,0 +1,29 @@
+name: CI
+
+# Se ejecuta al abrir o actualizar una pull request dirigida a develop o main.
+on:
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  test:
+    name: Type-check y tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Comprobación estática de tipos
+        run: npm run type-check
+
+      - name: Pruebas (unitarias, integración y componentes)
+        run: npm test
