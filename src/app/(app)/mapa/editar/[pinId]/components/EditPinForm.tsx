@@ -343,7 +343,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
             <p className="text-white/60 text-sm">Subiendo archivos multimedia al servidor…</p>
           )}
           {submitPhase === "partial_error" && (
-            <p className="text-amber-300 text-sm">
+            <p className="text-chip text-amber-300 text-sm">
               El pin se actualizó correctamente pero algunos archivos no se pudieron subir.
             </p>
           )}
@@ -625,7 +625,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
         {/* Submit error */}
         {submitError && (
-          <p className="text-red-400 text-sm">{submitError}</p>
+          <p className="text-chip text-red-400 text-sm">{submitError}</p>
         )}
 
         {/* Actions */}

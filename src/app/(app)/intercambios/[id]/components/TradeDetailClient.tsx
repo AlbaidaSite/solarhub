@@ -144,7 +144,7 @@ export default function TradeDetailClient({
   return (
     <div className="flex flex-col gap-4">
       {actionError && (
-        <p className="text-red-400 text-sm text-center">{actionError}</p>
+        <p className="text-chip text-red-400 text-sm text-center">{actionError}</p>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

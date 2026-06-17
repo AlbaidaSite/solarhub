@@ -22,7 +22,7 @@ export default function RegisterCromoButton({
       href="/cromos/registrar"
       aria-label="Registrar cromo nuevo"
       title="Registrar cromo"
-      className={`items-center justify-center p-2 rounded-full text-cyan-700 hover:text-cyan-600 hover:bg-white/5 transition-colors ${className}`}
+      className={`items-center justify-center p-2 rounded-full text-cyan-600 hover:text-cyan-500 hover:bg-white/5 transition-colors ${className}`}
     >
       <span aria-hidden className="inline-grid grid-cols-4">
         {Array.from({ length: CELLS_COUNT }).map((_, i) => {

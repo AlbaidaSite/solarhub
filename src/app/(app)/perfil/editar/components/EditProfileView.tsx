@@ -267,7 +267,7 @@ function EmailForm({ current }: { current: string }) {
         required
       />
 
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-chip text-red-400 text-sm">{error}</p>}
       {success && (
         <p className="text-emerald-400 text-sm">
           Te hemos enviado un email para confirmar el cambio.
@@ -363,7 +363,7 @@ function UsernameForm({ current }: { current: string }) {
         required
       />
 
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-chip text-red-400 text-sm">{error}</p>}
       {success && <p className="text-emerald-400 text-sm">Usuario actualizado.</p>}
 
       <CornerButton type="submit" disabled={loading} className="self-center">
@@ -475,15 +475,15 @@ function PasswordForm({ currentEmail }: { currentEmail: string }) {
       />
 
       {pwErrors.length > 0 && (
-        <ul className="text-red-400 text-sm flex flex-col gap-1 list-disc list-inside">
+        <ul className="text-chip text-red-400 text-sm flex flex-col gap-1 list-disc list-inside">
           {pwErrors.map((err, i) => (
             <li key={i}>{err}</li>
           ))}
         </ul>
       )}
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-chip text-red-400 text-sm">{error}</p>}
       {success && (
-        <p className="text-emerald-400 text-sm">Contraseña actualizada.</p>
+        <p className="text-chip text-emerald-400 text-sm">Contraseña actualizada.</p>
       )}
 
       <CornerButton type="submit" disabled={loading} className="mt-2 self-center">

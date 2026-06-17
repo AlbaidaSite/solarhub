@@ -94,7 +94,7 @@ export default function LoginForm() {
         required
       />
 
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-chip text-red-400 text-sm">{error}</p>}
 
       <CornerButton type="submit" disabled={loading} className="mt-4 self-center">
         {loading ? "Accediendo…" : "Acceder"}

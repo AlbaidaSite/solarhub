@@ -262,7 +262,7 @@ export default function AvatarEditor() {
             </p>
             <p className="text-xs text-white/30">JPEG, PNG, WebP, GIF o HEIC</p>
           </div>
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          {error && <p className="text-chip text-red-400 text-sm text-center">{error}</p>}
         </div>
       ) : (
         <div className="w-full max-w-md flex flex-col items-center gap-6">
@@ -314,7 +314,7 @@ export default function AvatarEditor() {
             Arrastra para reposicionar · usa el zoom para ampliar
           </p>
 
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          {error && <p className="text-chip text-red-400 text-sm text-center">{error}</p>}
 
           <div className="flex items-center gap-6">
             <button
