@@ -34,7 +34,7 @@ export const MobileMenu = ({
         <div className="flex justify-end items-center p-6">
           <button
             onClick={onOpen}
-            className="text-white hover:text-gray-300 transition-colors p-2 pointer-events-auto"
+            className="icon-chip text-white hover:text-gray-300 transition-colors p-2 pointer-events-auto"
             aria-label="Abrir menú"
           >
             <Menu size={32} />

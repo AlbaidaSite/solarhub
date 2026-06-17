@@ -134,7 +134,7 @@ export default function RegisterCromoForm({ categories }: RegisterCromoFormProps
       {message && (
         <p
           role="status"
-          className={`text-center max-w-md px-4 ${
+          className={`text-chip text-center max-w-md px-4 ${
             message.tone === "error" ? "text-red-400" : "text-amber-300"
           }`}
         >

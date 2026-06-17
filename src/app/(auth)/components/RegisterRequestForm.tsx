@@ -208,7 +208,7 @@ export default function RegisterRequestForm() {
           />
         </div>
 
-        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {error && <p className="text-chip text-red-400 text-sm">{error}</p>}
 
         <CornerButton type="submit" disabled={loading} className="mt-4 self-center">
           {loading ? "Enviando…" : "Renovar solicitud"}
@@ -278,7 +278,7 @@ export default function RegisterRequestForm() {
           />
         </div>
 
-        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {error && <p className="text-chip text-red-400 text-sm">{error}</p>}
 
         <CornerButton type="submit" disabled={loading} className="mt-4 self-center">
           {loading ? "Enviando…" : "Mandar solicitud"}
@@ -336,12 +336,12 @@ export default function RegisterRequestForm() {
       />
 
       {passwordErrors.length > 0 && (
-        <ul className="text-red-400 text-sm flex flex-col gap-1 list-disc list-inside">
+        <ul className="text-chip text-red-400 text-sm flex flex-col gap-1 list-disc list-inside">
           {passwordErrors.map((err, i) => <li key={i}>{err}</li>)}
         </ul>
       )}
 
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-chip text-red-400 text-sm">{error}</p>}
 
       <CornerButton type="submit" disabled={loading} className="mt-4 self-center">
         {loading ? "Comprobando…" : "Solicitar"}

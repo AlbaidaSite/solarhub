@@ -154,7 +154,7 @@ export default function AlbumFilters({
         <div className="flex flex-col items-start gap-1 p-6">
           <button
             onClick={() => setIsMobileOpen(true)}
-            className="text-white hover:text-gray-300 transition-colors p-2 pointer-events-auto"
+            className="icon-chip text-white hover:text-gray-300 transition-colors p-2 pointer-events-auto"
             aria-label="Abrir filtros"
           >
             <Filter size={32} />
@@ -166,7 +166,7 @@ export default function AlbumFilters({
               type="button"
               onClick={onShowAllToggle}
               aria-label={showAll ? "Mostrar solo mis cromos" : "Mostrar todos los cromos"}
-              className="text-white hover:text-amber-300 transition-colors p-2 pointer-events-auto cursor-pointer"
+              className="icon-chip text-white hover:text-amber-300 transition-colors p-2 pointer-events-auto cursor-pointer"
             >
               {showAll || showSuperAll ? <EyeClosed size={28} /> : <Eye size={28} />}
             </button>
@@ -176,7 +176,7 @@ export default function AlbumFilters({
                 type="button"
                 onClick={onShowSuperAllToggle}
                 aria-label={showSuperAll ? "Desactivar vista de administrador" : "Ver todos los cromos (administrador)"}
-                className={`transition-colors p-2 pointer-events-auto cursor-pointer ${
+                className={`icon-chip transition-colors p-2 pointer-events-auto cursor-pointer ${
                   showSuperAll ? "text-amber-400 hover:text-amber-300" : "text-amber-600 hover:text-amber-400"
                 }`}
               >
@@ -184,8 +184,8 @@ export default function AlbumFilters({
               </button>
             )}
 
-            <RegisterCromoButton className="inline-flex pointer-events-auto" />
-            <IntercambiosButton className="inline-flex pointer-events-auto" />
+            <RegisterCromoButton className="icon-chip inline-flex pointer-events-auto" />
+            <IntercambiosButton className="icon-chip inline-flex pointer-events-auto" />
           </div>
         </div>
       </div>
