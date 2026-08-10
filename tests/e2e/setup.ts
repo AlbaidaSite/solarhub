@@ -111,6 +111,8 @@ export interface TestUser {
 const trackedUsers = new Set<string>();
 const trackedCromos = new Set<number>();
 const trackedLabels = new Set<number>();
+const trackedEvents = new Set<number>();
+const trackedEventTypes = new Set<number>();
 
 export async function createTestUser(opts: TestUserOpts = {}): Promise<TestUser> {
   const admin = createAdminClient();
@@ -288,6 +290,70 @@ export async function setCurrentOwner(uniqueId: number, userId: string): Promise
   if (error) throw new Error(`setCurrentOwner failed: ${error.message}`);
 }
 
+// ─── Calendario: event_type / event ──────────────────────────────────────────
+
+export interface TestEventTypeOpts {
+  name?: string;
+  code?: string;
+  iconPath?: string;
+  color?: string;
+}
+
+export interface TestEventType {
+  id: number;
+  code: string;
+}
+
+export async function createTestEventType(opts: TestEventTypeOpts = {}): Promise<TestEventType> {
+  const admin = createAdminClient();
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const code = opts.code ?? `E2E_${suffix.toUpperCase()}`;
+
+  const { data, error } = await admin
+    .from("event_type")
+    .insert({
+      name: opts.name ?? `tipo-${SUITE_TAG}-${suffix}`,
+      code,
+      icon_path: opts.iconPath ?? "test/event-icon.svg",
+      color: opts.color ?? "amber-400",
+    })
+    .select("id, code")
+    .single();
+  if (error || !data) throw new Error(`create event_type failed: ${error?.message}`);
+  trackedEventTypes.add(data.id as number);
+  return { id: data.id as number, code: data.code as string };
+}
+
+export interface TestEventOpts {
+  userId: string;
+  eventTypeId: number;
+  eventDate: string; // ISO timestamptz, p.ej. "2026-06-15T22:30:00+02:00"
+  title?: string;
+  recurrence?: "NONE" | "YEARLY";
+}
+
+export interface TestEvent {
+  id: number;
+}
+
+export async function createTestEvent(opts: TestEventOpts): Promise<TestEvent> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("event")
+    .insert({
+      user_id: opts.userId,
+      event_type_id: opts.eventTypeId,
+      title: opts.title ?? `evento-${SUITE_TAG}-${Math.random().toString(36).slice(2, 6)}`,
+      event_date: opts.eventDate,
+      recurrence: opts.recurrence ?? "NONE",
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`create event failed: ${error?.message}`);
+  trackedEvents.add(data.id as number);
+  return { id: data.id as number };
+}
+
 // ─── Cleanup ─────────────────────────────────────────────────────────────────
 
 afterEach(async () => {
@@ -303,6 +369,17 @@ afterEach(async () => {
   if (trackedLabels.size > 0) {
     await admin.from("cromo_labels").delete().in("id", [...trackedLabels]);
     trackedLabels.clear();
+  }
+  // event tiene FK ON DELETE CASCADE sobre attending, así que borrar el
+  // evento se lleva la asistencia con él. event_type se borra después,
+  // porque event.event_type_id lo referencia sin cascade.
+  if (trackedEvents.size > 0) {
+    await admin.from("event").delete().in("id", [...trackedEvents]);
+    trackedEvents.clear();
+  }
+  if (trackedEventTypes.size > 0) {
+    await admin.from("event_type").delete().in("id", [...trackedEventTypes]);
+    trackedEventTypes.clear();
   }
   // Trades (cualquiera donde participen usuarios trackeados) — los
   // borramos antes que los usuarios porque trade.initiator_id REFERENCES profile.

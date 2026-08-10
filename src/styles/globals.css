@@ -6,6 +6,19 @@
   --breakpoint-nav: 650px;
 }
 
+/* CALENDARIO DE EVENTOS: event_type.color guarda un nombre de clase
+   Tailwind completo (matiz + tono, ej. "amber-400"), compuesto en tiempo de
+   ejecución por src/lib/eventTypeClasses.ts. Tailwind 4 escanea el fuente en
+   build time, así que `bg-${color}` no genera nada por sí solo — hay que
+   forzar la generación de TODA la superficie matiz×tono posible aquí.
+   No hay CHECK en BD que limite los valores (ver migración
+   20260808120300_event_type_color_format.sql), así que esta lista cubre la
+   paleta completa de Tailwind. Si Tailwind cambia su escala de tonos, esta
+   lista debe actualizarse junto con las filas de event_type en Supabase. */
+@source inline("{bg,border}-{red,orange,amber,yellow,lime,green,emerald,teal,cyan,sky,blue,indigo,violet,purple,fuchsia,pink}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("bg-{red,orange,amber,yellow,lime,green,emerald,teal,cyan,sky,blue,indigo,violet,purple,fuchsia,pink}-{50,100,200,300,400,500,600,700,800,900,950}/20");
+@source inline("bg-zinc-400 border-zinc-400 bg-zinc-400/20");
+
 @layer base {
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -108,5 +121,27 @@
   }
   .scrollbar-clean::-webkit-scrollbar-thumb:hover {
     background-color: rgba(255, 255, 255, 0.85);
+  }
+
+  /* Pastillas de cumpleaños de la celda de escritorio del calendario
+     (src/app/(app)/eventos/components/BirthdayPills.tsx). Implementado en
+     CSS plano y no con variantes arbitrarias de Tailwind porque `:has()`
+     con selectores compuestos queda ilegible como clase.
+     La transición va sobre flex-grow (nunca width) para que sea barata y
+     no dispare reflow del texto. El `:not(:hover)` es lo que hace crecer a
+     la pastilla apuntada en vez de colapsarla, y lo que deja intacto el
+     caso de una sola pastilla (sin :has(.ev-pill:hover) no pasa nada). */
+  .ev-pills {
+    display: flex;
+    gap: 3px;
+    padding: 0 5%;
+  }
+  .ev-pill {
+    flex: 1 1 0;
+    min-width: 0;
+    transition: flex-grow 0.22s ease;
+  }
+  .ev-pills:has(.ev-pill:hover) .ev-pill:not(:hover) {
+    flex-grow: 0.001;
   }
 }
