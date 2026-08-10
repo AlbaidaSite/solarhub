@@ -1,0 +1,33 @@
+-- =====================================================================
+-- CALENDARIO: event_type.color deja de ser un hex y pasa a ser texto libre
+-- =====================================================================
+-- `color` pasa de CHAR(7) (hex tipo `#RRGGBB`) a `text`, guardando el
+-- nombre completo de una clase de color de Tailwind, matiz + tono
+-- (p.ej. "amber-400", "emerald-500"). El código lo usa tal cual, sin
+-- componer el tono por contexto: `eventTypeClasses()` en
+-- src/lib/eventTypeClasses.ts construye `bg-${color}`, `border-${color}`
+-- y `bg-${color}/20` directamente sobre este valor.
+--
+-- Se cambia de CHAR(7) a `text` (con btrim) por el mismo motivo que en
+-- otras columnas de tipo carácter de este proyecto: `bpchar` rellena con
+-- espacios a la derecha, lo que rompería la composición de clases en
+-- silencio.
+--
+-- CONTRATO DE FORMATO (sin CHECK en BD, a petición explícita): el valor
+-- debe cumplir `^[a-z]+-\d{3}$` (matiz en minúsculas + guion + 3 dígitos de
+-- tono). Esto se valida solo en frontend, en `src/lib/eventTypeClasses.ts`
+-- (con fallback a un color neutro si no matchea). Las filas de event_type
+-- se crean y editan a mano desde Supabase Studio: al rellenar `color` a
+-- mano, usa el nombre de clase completo de Tailwind (ej. "amber-400"), no
+-- solo el matiz. Usa exclusivamente matices de la paleta de Tailwind: algo
+-- como "mauve-400" (mauve es de Radix Colors, no de Tailwind) cumple el
+-- formato pero no genera ninguna clase real.
+--
+-- Si algún día se necesita reforzar este contrato en BD, el lugar simétrico
+-- a mantener sincronizado es el `@source inline(...)` de src/styles/globals.css,
+-- que debe declarar todas las combinaciones matiz×tono que puedan aparecer
+-- aquí para que Tailwind las genere en build time.
+-- =====================================================================
+
+alter table public.event_type drop constraint if exists event_type_color_check;
+alter table public.event_type alter column color type text using btrim(color);
