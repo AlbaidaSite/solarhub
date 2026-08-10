@@ -7,6 +7,7 @@ import {
   toEventOccurrence,
   type EventOccurrence,
   type EventOccurrenceRow,
+  type EventPrice,
   type EventTypeInfo,
 } from "@/types/events";
 
@@ -53,6 +54,23 @@ export async function getEventOccurrencesInRangeAction(
       },
     };
   });
+}
+
+// ─── Precios del evento (bajo demanda, modal de detalle) ─────────────────────
+// No van en events_in_range (payload de la rejilla): se piden solo cuando
+// se abre el modal de detalle de un evento concreto.
+
+export async function getEventPricesAction(eventId: number): Promise<EventPrice[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("event_price")
+    .select("id, reason, price")
+    .eq("event_id", eventId)
+    .order("id")
+    .returns<EventPrice[]>();
+
+  if (error || !data) return [];
+  return data;
 }
 
 // ─── Tipos de evento (selector del formulario de alta) ───────────────────────

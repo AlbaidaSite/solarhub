@@ -17,6 +17,10 @@ function makeOccurrence(id: number): EventOccurrence {
     imageUrl: null,
     url: null,
     includesCromo: false,
+    eventDate: "2026-06-15T00:00:00Z",
+    endDate: null,
+    startTimeIncluded: false,
+    endTimeIncluded: true,
     eventType: {
       id: 1,
       code: "GENERIC",

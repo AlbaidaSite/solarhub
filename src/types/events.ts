@@ -19,6 +19,15 @@ export interface EventOccurrenceRow {
   image_url: string | null;
   url: string | null;
   includes_cromo: boolean;
+  // event_date/end_date llegan tal cual están en BD (instante UTC, sin
+  // reproyectar): para un evento YEARLY solo dan la HORA real, el
+  // año/mes/día proyectado está en occurrence_date. start_time_included/
+  // end_time_included dicen si esa hora es real o solo el valor neutro
+  // (medianoche) que guarda el formulario cuando no se especificó hora.
+  event_date: string;
+  end_date: string | null;
+  start_time_included: boolean;
+  end_time_included: boolean;
   event_type_id: number;
   event_type_code: string;
   event_type_name: string;
@@ -35,7 +44,17 @@ export interface EventOccurrence {
   imageUrl: string | null;
   url: string | null;
   includesCromo: boolean;
+  eventDate: string;
+  endDate: string | null;
+  startTimeIncluded: boolean;
+  endTimeIncluded: boolean;
   eventType: EventTypeInfo;
+}
+
+export interface EventPrice {
+  id: number;
+  reason: string | null;
+  price: number;
 }
 
 export function toEventOccurrence(row: EventOccurrenceRow): EventOccurrence {
@@ -48,6 +67,10 @@ export function toEventOccurrence(row: EventOccurrenceRow): EventOccurrence {
     imageUrl: row.image_url,
     url: row.url,
     includesCromo: row.includes_cromo,
+    eventDate: row.event_date,
+    endDate: row.end_date,
+    startTimeIncluded: row.start_time_included,
+    endTimeIncluded: row.end_time_included,
     eventType: {
       id: row.event_type_id,
       code: row.event_type_code,

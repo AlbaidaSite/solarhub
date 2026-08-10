@@ -34,6 +34,10 @@ function makeOccurrence(overrides: Partial<EventOccurrence> & { id: number }): E
     imageUrl: `https://cdn.test/event-${overrides.id}.webp`,
     url: null,
     includesCromo: false,
+    eventDate: "2026-06-15T00:00:00Z",
+    endDate: null,
+    startTimeIncluded: false,
+    endTimeIncluded: true,
     eventType: {
       id: 1,
       code: "GENERIC",
@@ -65,7 +69,7 @@ interface HarnessProps {
   stickyEventId?: number;
   isSelectedDay?: boolean;
   onSelectStickyImage?: (dateKey: string, eventId: number) => void;
-  onEventSelect?: (eventId: number) => void;
+  onEventSelect?: (eventId: number, occurrenceDate: string) => void;
   onDaySelect?: (dateKey: string) => void;
 }
 

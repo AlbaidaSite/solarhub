@@ -1,7 +1,10 @@
 // Cubre la RPC `events_in_range` (expansión de recurrencia anual, 29-F,
-// zona horaria Europe/Madrid, rango que cruza fin de año) y los triggers
-// que impiden combinar recurrencia YEARLY con asistencia
-// (20260808120400_event_yearly_attendance_guard.sql).
+// zona horaria Europe/Madrid, rango que cruza fin de año).
+//
+// Los triggers de guarda "recurrencia YEARLY + asistencia"
+// (20260808120400_event_yearly_attendance_guard.sql) se eliminaron en
+// 20260810140000_drop_attending_add_liked_event.sql junto con la tabla
+// `attending` — sus tests vivían aquí y se han quitado con ellos.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -124,67 +127,6 @@ describe.skipIf(!supabaseUp)(
 
       const day15 = await eventsInRange("2026-06-15", "2026-06-15");
       expect(day15.find((o) => o.id === event.id)).toBeUndefined();
-    });
-  },
-);
-
-describe.skipIf(!supabaseUp)(
-  `Guard recurrencia anual + asistencia (E2E)${supabaseDownReason ? ` · skipped (${supabaseDownReason})` : ""}`,
-  () => {
-    it("no se puede marcar asistencia en un evento con recurrencia anual", async () => {
-      const admin = createAdminClient();
-      const user = await createTestUser();
-      const eventType = await createTestEventType();
-      const event = await createTestEvent({
-        userId: user.id,
-        eventTypeId: eventType.id,
-        eventDate: "1994-06-10T12:00:00+02:00",
-        recurrence: "YEARLY",
-      });
-
-      const { error } = await admin
-        .from("attending")
-        .insert({ user_id: user.id, event_id: event.id, status: "GOING" });
-
-      expect(error).not.toBeNull();
-    });
-
-    it("se puede marcar asistencia en un evento sin recurrencia", async () => {
-      const admin = createAdminClient();
-      const user = await createTestUser();
-      const eventType = await createTestEventType();
-      const event = await createTestEvent({
-        userId: user.id,
-        eventTypeId: eventType.id,
-        eventDate: "2026-06-10T12:00:00+02:00",
-        recurrence: "NONE",
-      });
-
-      const { error } = await admin
-        .from("attending")
-        .insert({ user_id: user.id, event_id: event.id, status: "GOING" });
-
-      expect(error).toBeNull();
-    });
-
-    it("no se puede pasar a recurrencia anual un evento que ya tiene asistencia", async () => {
-      const admin = createAdminClient();
-      const user = await createTestUser();
-      const eventType = await createTestEventType();
-      const event = await createTestEvent({
-        userId: user.id,
-        eventTypeId: eventType.id,
-        eventDate: "2026-06-10T12:00:00+02:00",
-        recurrence: "NONE",
-      });
-      await admin.from("attending").insert({ user_id: user.id, event_id: event.id, status: "GOING" });
-
-      const { error } = await admin
-        .from("event")
-        .update({ recurrence: "YEARLY" })
-        .eq("id", event.id);
-
-      expect(error).not.toBeNull();
     });
   },
 );

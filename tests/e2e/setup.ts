@@ -370,9 +370,10 @@ afterEach(async () => {
     await admin.from("cromo_labels").delete().in("id", [...trackedLabels]);
     trackedLabels.clear();
   }
-  // event tiene FK ON DELETE CASCADE sobre attending, así que borrar el
-  // evento se lleva la asistencia con él. event_type se borra después,
-  // porque event.event_type_id lo referencia sin cascade.
+  // event tiene FK ON DELETE CASCADE sobre event_price, event_photo y
+  // liked_event, así que borrar el evento se lleva todo eso con él.
+  // event_type se borra después, porque event.event_type_id lo
+  // referencia sin cascade.
   if (trackedEvents.size > 0) {
     await admin.from("event").delete().in("id", [...trackedEvents]);
     trackedEvents.clear();
