@@ -43,20 +43,21 @@ export default function EventImageLayer({ occurrences, visibleEventId }: EventIm
   );
 }
 
-// Evento sin image_url: tesela compuesta con el icono del tipo centrado
-// sobre fondo del color del tipo. Solo aplica a eventos normales (los
+// Evento sin image_url: tesela compuesta con el icono del tipo y el título
+// sobre fondo del color del tipo. El título se deja envolver en varias
+// líneas sin truncar con ellipsis — el propio overflow-hidden de la celda
+// (CalendarCell.tsx) recorta lo que no quepa, así se ve "todo lo que quepa"
+// en vez de cortar a una sola línea. Solo aplica a eventos normales (los
 // cumpleaños nunca llegan hasta aquí: se filtran antes en CalendarCell).
 function EventTypeTile({ occurrence }: { occurrence: EventOccurrence }) {
   const classes = eventTypeClasses(occurrence.eventType.color);
   return (
-    <div className={`center-flex h-full w-full ${classes.dot}`}>
-      <Image
-        src={occurrence.eventType.icon_path}
-        alt=""
-        width={28}
-        height={28}
-        className="opacity-90"
-      />
+    <div
+      className={`flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden p-2 text-center ${classes.dot}`}
+    >
+      <p className="text-lg font-semibold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.7)]">
+        {occurrence.title}
+      </p>
     </div>
   );
 }

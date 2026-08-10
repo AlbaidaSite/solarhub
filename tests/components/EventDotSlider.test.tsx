@@ -62,7 +62,7 @@ describe("EventDotSlider", () => {
     expect(onSelect).toHaveBeenNthCalledWith(2, a.id);
   });
 
-  it("el punto activo se distingue visualmente del resto", () => {
+  it("todos los puntos comparten el mismo tamaño y no llevan anillo (ese lenguaje visual queda para otro uso)", () => {
     const a = makeOccurrence(1);
     const b = makeOccurrence(2);
     render(
@@ -73,8 +73,37 @@ describe("EventDotSlider", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: a.title }).className).not.toContain("ring-2");
-    expect(screen.getByRole("button", { name: b.title }).className).toContain("ring-2");
+    const dotA = screen.getByRole("button", { name: a.title });
+    const dotB = screen.getByRole("button", { name: b.title });
+
+    const sizeClassesOf = (el: HTMLElement) =>
+      el.className.split(/\s+/).filter((c) => c.startsWith("h-") || c.startsWith("w-"));
+
+    expect(dotA.className).not.toContain("ring-2");
+    expect(dotB.className).not.toContain("ring-2");
+    expect(sizeClassesOf(dotA)).toEqual(sizeClassesOf(dotB));
+
+    expect(dotA).toHaveAttribute("aria-current", "false");
+    expect(dotB).toHaveAttribute("aria-current", "true");
+  });
+
+  it("el punto activo se rellena de blanco; el resto lleva el color de su tipo", () => {
+    const a = makeOccurrence(1);
+    const b = makeOccurrence(2);
+    render(
+      <EventDotSlider
+        dotSequence={{ visible: [a, b], overflowCount: 0 }}
+        visibleEventId={b.id}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const dotA = screen.getByRole("button", { name: a.title });
+    const dotB = screen.getByRole("button", { name: b.title });
+
+    expect(dotA.className).toContain("bg-amber-400");
+    expect(dotA.className).not.toContain("bg-white");
+    expect(dotB.className).toContain("bg-white");
   });
 
   it("con desbordamiento (7 eventos) añade un punto neutro no interactivo", () => {

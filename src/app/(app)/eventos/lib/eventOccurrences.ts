@@ -47,12 +47,10 @@ export function getDesktopDotSequence(dayOccurrences: EventOccurrence[]): DotSeq
   return buildDotSequence(dayOccurrences.filter((o) => !isBirthday(o)));
 }
 
-// Móvil: los cumpleaños sí generan punto y van siempre primero. Se calcula
-// desde cero (no se reutiliza un filtro sobre la secuencia de escritorio):
-// el índice de cada punto debe apuntar al mismo evento en ambas vistas por
-// separado, no a posiciones desplazadas de un único array compartido.
+// Móvil: los cumpleaños tampoco generan punto (van en el destello único de
+// CalendarCell.tsx, uno por día sin importar cuántos cumpleaños haya) — la
+// lógica queda idéntica a escritorio, se mantiene como función aparte por
+// claridad de nombre en el punto de uso.
 export function getMobileDotSequence(dayOccurrences: EventOccurrence[]): DotSequence {
-  const birthdays = dayOccurrences.filter(isBirthday);
-  const rest = dayOccurrences.filter((o) => !isBirthday(o));
-  return buildDotSequence([...birthdays, ...rest]);
+  return buildDotSequence(dayOccurrences.filter((o) => !isBirthday(o)));
 }
