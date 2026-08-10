@@ -23,6 +23,10 @@ function makeOccurrence(
     imageUrl: null,
     url: null,
     includesCromo: false,
+    eventDate: `${date}T00:00:00Z`,
+    endDate: null,
+    startTimeIncluded: false,
+    endTimeIncluded: true,
     eventType: {
       id: 1,
       code: "GENERIC",

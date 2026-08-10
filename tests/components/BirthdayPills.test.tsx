@@ -24,6 +24,10 @@ function makeBirthday(id: number, title: string): EventOccurrence {
     imageUrl: null,
     url: null,
     includesCromo: false,
+    eventDate: "2026-06-15T00:00:00Z",
+    endDate: null,
+    startTimeIncluded: false,
+    endTimeIncluded: true,
     eventType: {
       id: 2,
       code: "BIRTHDAY",

@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useButton, useCalendar, useLocale, I18nProvider, type AriaButtonProps } from "react-aria";
 import { useCalendarState } from "react-stately";
-import { createCalendar, type CalendarDate } from "@internationalized/date";
+import { createCalendar, CalendarDate } from "@internationalized/date";
 import { Cake, ChevronDown, Plus } from "lucide-react";
 import CalendarGrid from "./CalendarGrid";
 import MonthYearPicker from "./MonthYearPicker";
 import Triangle from "./Triangle";
+import EventDetailModal from "./EventDetailModal";
+import EventListModal from "./EventListModal";
 import { getEventOccurrencesInRangeAction } from "../actions";
 import { getMonthGridRange } from "../lib/gridRange";
 import { groupOccurrencesByDate } from "../lib/eventOccurrences";
@@ -16,8 +18,27 @@ import { isBirthday, type EventOccurrence } from "@/types/events";
 
 interface EventsCalendarProps {
   initialOccurrences: EventOccurrence[];
-  onEventSelect?: (eventId: number) => void;
+  onEventSelect?: (eventId: number, occurrenceDate: string) => void;
   onDaySelect?: (dateKey: string) => void;
+}
+
+// Estado de qué modal (si alguno) está abierto — vive aquí, no en contexto
+// global. "detail" con from:"list" viene del modal de lista (móvil):
+// EventDetailModal muestra flecha "volver" en vez de cerrar del todo, y
+// volver reconstruye el modal de lista con `listDateKey`.
+type EventModalState =
+  | { view: "closed" }
+  | { view: "list"; dateKey: string }
+  | {
+      view: "detail";
+      eventId: number;
+      occurrenceDate: string;
+      from: "grid" | "list";
+      listDateKey?: string;
+    };
+
+function monthKeyFromDateString(dateStr: string): string {
+  return dateStr.slice(0, 7);
 }
 
 // Preferencia de "ocultar cumpleaños": se recuerda entre visitas en
@@ -67,8 +88,39 @@ function EventsCalendarInner({
   onDaySelect,
 }: EventsCalendarProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { locale } = useLocale();
   const state = useCalendarState({ locale, createCalendar });
+
+  const [modal, setModal] = useState<EventModalState>({ view: "closed" });
+
+  // Igual patrón que hideBirthdays más abajo: arranca en `false` en
+  // servidor y en el primer render de cliente, se corrige en un efecto.
+  // Hace falta para que handleDaySelect sepa si el tap actual es de
+  // móvil — en escritorio, el clic en la imagen ya llama a onDaySelect a
+  // la vez que a onEventSelect (ver CalendarCell.tsx), así que sin esta
+  // señal no se podría distinguir "día vacío en escritorio" (no abre
+  // nada) de "cualquier día con eventos en móvil" (abre la lista): ambos
+  // casos llegan con la misma firma de evento.
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+
+  useEffect(() => {
+    // 767px: justo por debajo del breakpoint `md` de Tailwind (768px),
+    // el mismo que separa los dos bloques de marcado de CalendarCell.tsx.
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileViewport(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  // Sincronía con la URL (?evento=<id>&fecha=<YYYY-MM-DD>): suprimida
+  // mientras el arranque en frío (bootstrapLinkRef) está en curso, para
+  // que ambos efectos no compitan por escribir la URL a la vez.
+  const suppressUrlSyncRef = useRef(false);
+  const hasBootstrappedRef = useRef(false);
+  const bootstrapLinkRef = useRef<{ eventId: number; occurrenceDate: string } | null>(null);
 
   const initialMonthKey = monthKey(state.visibleRange.start);
 
@@ -163,12 +215,98 @@ function EventsCalendarInner({
     return groupOccurrencesByDate(visibleOccurrences);
   }, [monthCache, visibleMonthKey, hideBirthdays]);
 
+  function findOccurrence(eventId: number, occurrenceDate: string): EventOccurrence | null {
+    const monthOccurrences = monthCache.get(monthKeyFromDateString(occurrenceDate));
+    return monthOccurrences?.find((o) => o.id === eventId) ?? null;
+  }
+
+  // Arranque en frío vía enlace compartido (?evento=&fecha=): una sola vez
+  // al montar. Mueve el mes visible a la fecha del enlace — eso ya dispara
+  // el efecto de arriba, que carga ese mes en monthCache — y deja la
+  // apertura del modal pendiente en bootstrapLinkRef hasta que ese mes
+  // llegue (ver el efecto siguiente, que observa monthCache).
+  useEffect(() => {
+    if (hasBootstrappedRef.current) return;
+    hasBootstrappedRef.current = true;
+
+    const eventoParam = searchParams.get("evento");
+    const fechaParam = searchParams.get("fecha");
+    if (!eventoParam || !fechaParam) return;
+
+    const eventId = Number(eventoParam);
+    const [year, month, day] = fechaParam.split("-").map(Number);
+    if (!Number.isFinite(eventId) || !year || !month || !day) return;
+
+    suppressUrlSyncRef.current = true;
+    bootstrapLinkRef.current = { eventId, occurrenceDate: fechaParam };
+    state.setFocusedDate(new CalendarDate(year, month, day));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cuando el mes del enlace pendiente termina de cargar en monthCache,
+  // abre el detalle si el evento sigue existiendo ahí; si no aparece
+  // (enlace obsoleto), no hace nada más — sin bucles, se limpia igual.
+  useEffect(() => {
+    const pending = bootstrapLinkRef.current;
+    if (!pending) return;
+
+    const monthOccurrences = monthCache.get(monthKeyFromDateString(pending.occurrenceDate));
+    if (!monthOccurrences) return;
+
+    bootstrapLinkRef.current = null;
+    const found = monthOccurrences.find((o) => o.id === pending.eventId);
+    if (found) {
+      setModal({ view: "detail", eventId: pending.eventId, occurrenceDate: pending.occurrenceDate, from: "grid" });
+    }
+    suppressUrlSyncRef.current = false;
+  }, [monthCache]);
+
+  // Sincroniza la URL con el modal abierto — se suprime durante el
+  // arranque en frío de arriba para que ambos no compitan.
+  //
+  // history.replaceState en vez de router.replace: la ruta es dinámica
+  // (page.tsx llama a getEventOccurrencesInRangeAction, que depende de
+  // cookies de auth), así que router.replace — aunque lleve
+  // scroll:false — sigue disparando una renavegación completa (nueva
+  // petición RSC visible en Network) cada vez que se abre o cierra un
+  // modal. Esa renavegación competía con el fetch de precios bajo
+  // demanda del modal recién montado y lo dejaba colgado a medio
+  // cargar. history.replaceState solo toca la barra de direcciones
+  // (para que el enlace se pueda compartir) sin pasar por el router de
+  // Next, así que no reejecuta nada del lado servidor.
+  useEffect(() => {
+    if (suppressUrlSyncRef.current) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (modal.view === "detail") {
+      params.set("evento", String(modal.eventId));
+      params.set("fecha", modal.occurrenceDate);
+    } else {
+      params.delete("evento");
+      params.delete("fecha");
+    }
+    const query = params.toString();
+    window.history.replaceState(null, "", query ? `${pathname}?${query}` : pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modal]);
+
   function handleSelectStickyImage(dateKey: string, eventId: number) {
     setStickyImageByDate((prev) => new Map(prev).set(dateKey, eventId));
   }
 
+  function handleEventSelect(eventId: number, occurrenceDate: string) {
+    setModal({ view: "detail", eventId, occurrenceDate, from: "grid" });
+    onEventSelect?.(eventId, occurrenceDate);
+  }
+
   function handleDaySelect(dateKey: string) {
     setSelectedDateKey(dateKey);
+    if (isMobileViewport) {
+      const dayOccurrences = occurrencesByDate.get(dateKey) ?? [];
+      if (dayOccurrences.length > 0) {
+        setModal({ view: "list", dateKey });
+      }
+    }
     onDaySelect?.(dateKey);
   }
 
@@ -265,11 +403,54 @@ function EventsCalendarInner({
           stickyImageByDate={stickyImageByDate}
           selectedDateKey={selectedDateKey}
           onSelectStickyImage={handleSelectStickyImage}
-          onEventSelect={onEventSelect}
+          onEventSelect={handleEventSelect}
           onDaySelect={handleDaySelect}
           onCreateEvent={handleCreateEvent}
         />
       </div>
+
+      {modal.view === "detail" &&
+        (() => {
+          const occurrence = findOccurrence(modal.eventId, modal.occurrenceDate);
+          if (!occurrence) return null;
+          const { from, listDateKey } = modal;
+          return (
+            <EventDetailModal
+              occurrence={occurrence}
+              onClose={() => setModal({ view: "closed" })}
+              onBack={
+                from === "list" && listDateKey
+                  ? () => setModal({ view: "list", dateKey: listDateKey })
+                  : undefined
+              }
+            />
+          );
+        })()}
+
+      {modal.view === "list" &&
+        (() => {
+          const dateKey = modal.dateKey;
+          const dayOccurrences = occurrencesByDate.get(dateKey) ?? [];
+          return (
+            <EventListModal
+              dateKey={dateKey}
+              occurrences={dayOccurrences}
+              onSelectEvent={(eventId) => {
+                const occurrence = dayOccurrences.find((o) => o.id === eventId);
+                if (!occurrence) return;
+                setModal({
+                  view: "detail",
+                  eventId,
+                  occurrenceDate: occurrence.occurrenceDate,
+                  from: "list",
+                  listDateKey: dateKey,
+                });
+              }}
+              onCreateEvent={handleCreateEvent}
+              onClose={() => setModal({ view: "closed" })}
+            />
+          );
+        })()}
     </div>
   );
 }

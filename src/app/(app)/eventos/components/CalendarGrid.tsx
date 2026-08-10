@@ -12,7 +12,7 @@ interface CalendarGridProps {
   stickyImageByDate: Map<string, number>;
   selectedDateKey: string | null;
   onSelectStickyImage: (dateKey: string, eventId: number) => void;
-  onEventSelect?: (eventId: number) => void;
+  onEventSelect?: (eventId: number, occurrenceDate: string) => void;
   onDaySelect?: (dateKey: string) => void;
   onCreateEvent?: (dateKey: string) => void;
 }

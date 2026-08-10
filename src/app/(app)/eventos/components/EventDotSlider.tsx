@@ -41,7 +41,7 @@ export default function EventDotSlider({ dotSequence, visibleEventId, onSelect }
               // con el relleno blanco del punto (el resto lleva el color
               // de su tipo) y con el color del contorno de la celda (ver
               // CalendarCell.tsx).
-              className={`h-2 w-2 rounded-full transition-colors ${isActive ? "bg-white" : classes.dot}`}
+              className={`h-2.25 w-2.25 rounded-full transition-colors ${isActive ? "bg-white" : classes.dot}`}
             />
           );
         })}

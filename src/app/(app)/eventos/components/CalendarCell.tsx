@@ -21,7 +21,7 @@ interface CalendarCellProps {
   stickyEventId?: number;
   isSelectedDay: boolean;
   onSelectStickyImage: (dateKey: string, eventId: number) => void;
-  onEventSelect?: (eventId: number) => void;
+  onEventSelect?: (eventId: number, occurrenceDate: string) => void;
   onDaySelect?: (dateKey: string) => void;
   onCreateEvent?: (dateKey: string) => void;
 }
@@ -94,7 +94,7 @@ export default function CalendarCell({
               // evento aquí"); si además hay un evento visible, también se
               // notifica su selección — ambos handlers son independientes.
               onDaySelect?.(dateKey);
-              if (visibleEventId != null) onEventSelect?.(visibleEventId);
+              if (visibleEventId != null) onEventSelect?.(visibleEventId, dateKey);
             }}
           >
             <EventImageLayer occurrences={nonBirthdays} visibleEventId={visibleEventId} />
