@@ -103,14 +103,11 @@ describe("secuencia de puntos de escritorio", () => {
 });
 
 describe("secuencia de puntos de móvil", () => {
-  it("antepone los cumpleaños al resto de eventos", () => {
-    const normal = makeOccurrence("2026-06-01");
-    const birthday = makeBirthday("2026-06-01");
-    const { visible } = getMobileDotSequence([normal, birthday]);
-    expect(visible).toEqual([birthday, normal]);
-  });
-
-  it("difiere de la secuencia de escritorio para el mismo día", () => {
+  // Los cumpleaños ya no generan punto en móvil: se representan con un
+  // único destello en CalendarCell.tsx (ver ese componente), igual que en
+  // escritorio se representan con la pastilla superior — en ningún caso
+  // cuentan como un punto más de la secuencia.
+  it("excluye los cumpleaños, igual que la secuencia de escritorio", () => {
     const normal = makeOccurrence("2026-06-01");
     const birthday = makeBirthday("2026-06-01");
     const dayOccurrences = [birthday, normal];
@@ -119,6 +116,13 @@ describe("secuencia de puntos de móvil", () => {
     const mobile = getMobileDotSequence(dayOccurrences).visible;
 
     expect(desktop).toEqual([normal]);
-    expect(mobile).toEqual([birthday, normal]);
+    expect(mobile).toEqual([normal]);
+  });
+
+  it("un día solo con cumpleaños no genera ningún punto", () => {
+    const birthday = makeBirthday("2026-06-01");
+    const { visible, overflowCount } = getMobileDotSequence([birthday]);
+    expect(visible).toHaveLength(0);
+    expect(overflowCount).toBe(0);
   });
 });

@@ -14,6 +14,7 @@ interface CalendarGridProps {
   onSelectStickyImage: (dateKey: string, eventId: number) => void;
   onEventSelect?: (eventId: number) => void;
   onDaySelect?: (dateKey: string) => void;
+  onCreateEvent?: (dateKey: string) => void;
 }
 
 export default function CalendarGrid({
@@ -24,6 +25,7 @@ export default function CalendarGrid({
   onSelectStickyImage,
   onEventSelect,
   onDaySelect,
+  onCreateEvent,
 }: CalendarGridProps) {
   const { locale } = useLocale();
   const { gridProps, headerProps, weekDays } = useCalendarGrid({}, state);
@@ -66,6 +68,7 @@ export default function CalendarGrid({
                   onSelectStickyImage={onSelectStickyImage}
                   onEventSelect={onEventSelect}
                   onDaySelect={onDaySelect}
+                  onCreateEvent={onCreateEvent}
                 />
               ) : (
                 <td key={i} />

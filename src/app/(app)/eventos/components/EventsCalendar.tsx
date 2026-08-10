@@ -1,23 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { useButton, useCalendar, useLocale, I18nProvider, type AriaButtonProps } from "react-aria";
 import { useCalendarState } from "react-stately";
 import { createCalendar, type CalendarDate } from "@internationalized/date";
-import { ChevronDown } from "lucide-react";
+import { Cake, ChevronDown, Plus } from "lucide-react";
 import CalendarGrid from "./CalendarGrid";
 import MonthYearPicker from "./MonthYearPicker";
 import Triangle from "./Triangle";
 import { getEventOccurrencesInRangeAction } from "../actions";
 import { getMonthGridRange } from "../lib/gridRange";
 import { groupOccurrencesByDate } from "../lib/eventOccurrences";
-import type { EventOccurrence } from "@/types/events";
+import { isBirthday, type EventOccurrence } from "@/types/events";
 
 interface EventsCalendarProps {
   initialOccurrences: EventOccurrence[];
   onEventSelect?: (eventId: number) => void;
   onDaySelect?: (dateKey: string) => void;
 }
+
+// Preferencia de "ocultar cumpleaños": se recuerda entre visitas en
+// localStorage, no en el perfil del usuario (es puramente de presentación
+// del calendario en este navegador).
+const HIDE_BIRTHDAYS_KEY = "eventos:hideBirthdays";
 
 function monthKey(date: CalendarDate): string {
   return `${date.year}-${String(date.month).padStart(2, "0")}`;
@@ -60,6 +66,7 @@ function EventsCalendarInner({
   onEventSelect,
   onDaySelect,
 }: EventsCalendarProps) {
+  const router = useRouter();
   const { locale } = useLocale();
   const state = useCalendarState({ locale, createCalendar });
 
@@ -78,6 +85,26 @@ function EventsCalendarInner({
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const pickerContainerRef = useRef<HTMLDivElement>(null);
+
+  // Arranca en `false` tanto en servidor como en el primer render de
+  // cliente (para que coincidan y no haya desajuste de hidratación) y solo
+  // después, en un efecto que corre exclusivamente en cliente, se lee la
+  // preferencia guardada.
+  const [hideBirthdays, setHideBirthdays] = useState(false);
+
+  useEffect(() => {
+    if (window.localStorage.getItem(HIDE_BIRTHDAYS_KEY) === "1") {
+      setHideBirthdays(true);
+    }
+  }, []);
+
+  function toggleHideBirthdays() {
+    setHideBirthdays((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(HIDE_BIRTHDAYS_KEY, next ? "1" : "0");
+      return next;
+    });
+  }
 
   // Cierra el selector de mes/año al hacer clic fuera (mismo patrón que
   // ArtistMultiSelect.tsx / TradeCromoPanel.tsx).
@@ -128,10 +155,13 @@ function EventsCalendarInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleMonthKey]);
 
-  const occurrencesByDate = useMemo(
-    () => groupOccurrencesByDate(monthCache.get(visibleMonthKey) ?? []),
-    [monthCache, visibleMonthKey],
-  );
+  const occurrencesByDate = useMemo(() => {
+    const monthOccurrences = monthCache.get(visibleMonthKey) ?? [];
+    const visibleOccurrences = hideBirthdays
+      ? monthOccurrences.filter((o) => !isBirthday(o))
+      : monthOccurrences;
+    return groupOccurrencesByDate(visibleOccurrences);
+  }, [monthCache, visibleMonthKey, hideBirthdays]);
 
   function handleSelectStickyImage(dateKey: string, eventId: number) {
     setStickyImageByDate((prev) => new Map(prev).set(dateKey, eventId));
@@ -140,6 +170,10 @@ function EventsCalendarInner({
   function handleDaySelect(dateKey: string) {
     setSelectedDateKey(dateKey);
     onDaySelect?.(dateKey);
+  }
+
+  function handleCreateEvent(dateKey?: string) {
+    router.push(dateKey ? `/eventos/nueva?date=${dateKey}` : "/eventos/nueva");
   }
 
   const { calendarProps, prevButtonProps, nextButtonProps, title } = useCalendar(
@@ -159,18 +193,40 @@ function EventsCalendarInner({
     // crezcan/encojan con la ventana. Móvil no lleva h-full: sigue con su
     // flujo de página normal, sin cambios.
     <div {...calendarProps} className="flex flex-col gap-3 md:h-full">
-      <div className="flex items-center justify-between px-1 md:shrink-0">
+      <div className="relative flex items-center justify-center gap-3 px-1 md:shrink-0">
+        {/* Botón "Nuevo evento": posicionado en absoluto para no descentrar
+            el grupo flecha-título-flecha (que ahora va junto, con gap-3,
+            en vez de repartido a los extremos como antes). Mismo lenguaje
+            visual que "Añadir Pegatina" en mapa/components/GlobeClient.tsx;
+            el breakpoint es md: (no el nav: de la navbar global) porque es
+            el mismo que usa el resto de esta vista para pasar a móvil
+            (CalendarCell.tsx). */}
+        <button
+          type="button"
+          onClick={() => handleCreateEvent()}
+          aria-label="Nuevo evento"
+          title="Nuevo evento"
+          className="absolute left-1 flex items-center justify-center gap-2 w-9 h-9 md:w-auto md:h-9 md:px-3 rounded-full bg-white/10 hover:bg-white/20 border border-white/30 text-white hover:text-amber-300 transition-colors cursor-pointer"
+        >
+          <Plus size={18} strokeWidth={2.5} />
+          <span className="hidden md:inline text-sm font-semibold">Nuevo evento</span>
+        </button>
+
         <CalendarNavButton {...prevButtonProps} className={NAV_ARROW_CLASS} aria-label="Mes anterior">
           <Triangle direction="left" />
         </CalendarNavButton>
-        <div className="relative" ref={pickerContainerRef}>
+        {/* Ancho fijo (no ajustado al texto): así "MAYO de 2026" y
+            "SEPTIEMBRE de 2026" ocupan el mismo hueco y las flechas de
+            alrededor no se desplazan al cambiar de mes — 16rem cubre con
+            margen el mes más largo en es-ES ("septiembre") + " de aaaa". */}
+        <div className="relative flex w-64 justify-center" ref={pickerContainerRef}>
           <h2 className="contents">
             <button
               type="button"
               onClick={() => setIsPickerOpen((open) => !open)}
               aria-label="Elegir mes y año"
               aria-expanded={isPickerOpen}
-              className="flex items-center gap-1 rounded-lg px-2 py-1 text-lg font-semibold transition-colors hover:text-amber-300"
+              className="flex items-center gap-1 rounded-lg px-2 py-1 text-lg font-semibold whitespace-nowrap transition-colors hover:text-amber-300"
             >
               {displayTitle}
               <ChevronDown size={16} className={`transition-transform ${isPickerOpen ? "rotate-180" : ""}`} />
@@ -183,6 +239,24 @@ function EventsCalendarInner({
         <CalendarNavButton {...nextButtonProps} className={NAV_ARROW_CLASS} aria-label="Mes siguiente">
           <Triangle direction="right" />
         </CalendarNavButton>
+
+        {/* Ocultar cumpleaños: espejo del botón "Nuevo evento" pero a la
+            derecha y siempre icono-solo (no hace falta etiqueta en
+            escritorio, es un simple interruptor). */}
+        <button
+          type="button"
+          onClick={toggleHideBirthdays}
+          aria-label={hideBirthdays ? "Mostrar cumpleaños" : "Ocultar cumpleaños"}
+          aria-pressed={hideBirthdays}
+          title={hideBirthdays ? "Mostrar cumpleaños" : "Ocultar cumpleaños"}
+          className={`absolute right-1 flex h-9 w-9 items-center justify-center rounded-full border transition-colors cursor-pointer ${
+            hideBirthdays
+              ? "border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-amber-300"
+              : "border-amber-300/60 bg-amber-300/15 text-amber-200"
+          }`}
+        >
+          <Cake size={18} strokeWidth={2.5} />
+        </button>
       </div>
       <div className="md:min-h-0 md:flex-1">
         <CalendarGrid
@@ -193,6 +267,7 @@ function EventsCalendarInner({
           onSelectStickyImage={handleSelectStickyImage}
           onEventSelect={onEventSelect}
           onDaySelect={handleDaySelect}
+          onCreateEvent={handleCreateEvent}
         />
       </div>
     </div>

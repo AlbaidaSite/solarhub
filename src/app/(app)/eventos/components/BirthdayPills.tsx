@@ -5,15 +5,17 @@ interface BirthdayPillsProps {
   birthdays: EventOccurrence[];
 }
 
-// Pastillas de cumpleaños, banda superior. No son interactivas: son <div>,
-// no <button>, y no llevan tabindex — un cumpleaños nunca abre modal de
-// detalle. El recorte de texto (overflow/ellipsis) es visual; el nombre
-// completo sigue en el DOM y `title` da el tooltip de ratón.
+// Pastillas de cumpleaños, justo debajo del número de día (top-1.5..~top-8
+// está reservado para el número y el icono +, así que la banda empieza en
+// top-9). No son interactivas: son <div>, no <button>, y no llevan
+// tabindex — un cumpleaños nunca abre modal de detalle. El recorte de
+// texto (overflow/ellipsis) es visual; el nombre completo sigue en el DOM
+// y `title` da el tooltip de ratón.
 export default function BirthdayPills({ birthdays }: BirthdayPillsProps) {
   if (birthdays.length === 0) return null;
 
   return (
-    <div className="ev-pills absolute top-1.5 left-0 right-0">
+    <div className="ev-pills absolute top-9 left-0 right-0">
       {birthdays.map((birthday) => {
         const classes = eventTypeClasses(birthday.eventType.color);
         return (

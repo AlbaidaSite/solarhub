@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Sparkle } from "lucide-react";
 import { useCalendarCell } from "react-aria";
 import type { CalendarState } from "react-stately";
 import { isSameDay, today, type CalendarDate } from "@internationalized/date";
@@ -23,6 +23,7 @@ interface CalendarCellProps {
   onSelectStickyImage: (dateKey: string, eventId: number) => void;
   onEventSelect?: (eventId: number) => void;
   onDaySelect?: (dateKey: string) => void;
+  onCreateEvent?: (dateKey: string) => void;
 }
 
 // Una sola rejilla para escritorio y móvil: los dos bloques de marcado se
@@ -38,6 +39,7 @@ export default function CalendarCell({
   onSelectStickyImage,
   onEventSelect,
   onDaySelect,
+  onCreateEvent,
 }: CalendarCellProps) {
   const ref = useRef<HTMLDivElement>(null);
   const { cellProps, buttonProps, isOutsideVisibleRange, formattedDate } = useCalendarCell(
@@ -53,6 +55,14 @@ export default function CalendarCell({
   const nonBirthdays = occurrences.filter((o) => !isBirthday(o));
   const defaultOccurrence = getDefaultOccurrence(nonBirthdays);
   const visibleEventId = stickyEventId ?? defaultOccurrence?.id ?? null;
+  const visibleOccurrence = nonBirthdays.find((o) => o.id === visibleEventId) ?? null;
+  // Contorno de 2px: blanco por defecto, del color del tipo cuando la
+  // celda está mostrando un evento. Sustituye al aro blanco que antes
+  // llevaba el punto activo del slider (ver EventDotSlider.tsx) — ese
+  // lenguaje visual queda libre para otro uso futuro.
+  const cellBorderClass = visibleOccurrence
+    ? eventTypeClasses(visibleOccurrence.eventType.color).badgeBorder
+    : "border-white";
 
   const desktopDots = getDesktopDotSequence(occurrences);
   const mobileDots = getMobileDotSequence(occurrences);
@@ -74,7 +84,9 @@ export default function CalendarCell({
             CalendarGrid entre el alto disponible de la página), así que la
             celda crece/encoge junto con la ventana en vez de mantenerse
             cuadrada. */}
-        <div className="relative hidden h-full w-full overflow-hidden rounded-xl border border-white/10 md:block">
+        <div
+          className={`relative hidden h-full w-full overflow-hidden rounded-xl border-2 transition-colors md:block ${cellBorderClass}`}
+        >
           <div
             className="absolute inset-0"
             onClick={() => {
@@ -104,18 +116,38 @@ export default function CalendarCell({
               // "no seleccionado" lleva transition-none, la transición solo
               // existe al ENTRAR en el estado seleccionado (el navegador
               // solo anima si `transition` aplica en el estilo de destino).
+              //
+              // Solo es clicable (y navega a "crear evento este día") en su
+              // posición seleccionada/visible; en cualquier otro estado
+              // vuelve a pointer-events-none, así que al seleccionar OTRO
+              // día este + deja de poder pulsarse automáticamente (no hace
+              // falta lógica de deselección aparte).
               <Plus
-                aria-hidden
-                className={`pointer-events-none absolute top-1/2 left-1/2 z-10 h-5 w-5 -translate-y-1/2 ${
+                aria-hidden={!isSelectedDay}
+                aria-label={isSelectedDay ? "Crear evento este día" : undefined}
+                onClick={
                   isSelectedDay
-                    ? "translate-x-[calc(-50%+28px)] text-white transition-all duration-300"
-                    : "-translate-x-1/2 text-black transition-none"
+                    ? (event) => {
+                        event.stopPropagation();
+                        onCreateEvent?.(dateKey);
+                      }
+                    : undefined
+                }
+                className={`absolute top-1/2 left-1/2 z-10 h-5 w-5 -translate-y-1/2 ${
+                  isSelectedDay
+                    ? "pointer-events-auto cursor-pointer translate-x-[calc(-50%+28px)] text-white transition-all duration-300"
+                    : "pointer-events-none -translate-x-1/2 text-black transition-none"
                 }`}
               />
             )}
             <span
-              className={`relative z-20 flex h-6 w-6 items-center justify-center rounded-md text-sm font-semibold ${
-                isToday ? "bg-white/80 text-black" : "text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]"
+              // Círculo negro sólido por defecto (antes solo llevaba
+              // text-shadow): contra una imagen con mucho blanco, la sombra
+              // de texto sola no bastaba para que el número siguiera
+              // siendo legible. isToday sigue con su propio tratamiento
+              // (círculo blanco) porque ya garantiza contraste de sobra.
+              className={`relative z-20 flex h-6 w-6 items-center justify-center rounded-full text-sm font-semibold ${
+                isToday ? "bg-white/80 text-black" : "bg-black/80 text-white"
               } ${isSelectedDay ? "border-2 border-white" : ""}`}
             >
               {formattedDate}
@@ -127,6 +159,17 @@ export default function CalendarCell({
             visibleEventId={visibleEventId}
             onSelect={(eventId) => onSelectStickyImage(dateKey, eventId)}
           />
+          {/* Segundo borde negro de 2px, por dentro del border-2 de color.
+              Va como último hermano (no como shadow del contenedor): la capa
+              de imagen/tesela de EventImageLayer es `inset-0`, así que pinta
+              justo encima del box-shadow del contenedor y lo tapaba por
+              completo. Como último hijo (z-index:auto, orden de documento)
+              pinta por encima de todo lo demás; pointer-events-none para no
+              robarle clics ni al slider de puntos ni a la celda. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-xl shadow-[inset_0_0_0_3px_black]"
+          />
         </div>
 
         {/* Móvil */}
@@ -137,13 +180,19 @@ export default function CalendarCell({
           className="flex w-full flex-col items-center gap-1.5 py-3 md:hidden"
         >
           <span
-            className={`flex h-13 w-13 items-center justify-center rounded-lg text-xl ${
+            className={`flex h-13 w-13 items-center justify-center rounded-lg text-2xl ${
               isToday ? "bg-white/80 font-semibold text-black" : ""
             } ${isSelectedDay ? "border-[3px] border-white" : ""}`}
           >
             {formattedDate}
           </span>
           <span className="flex items-center gap-0.5">
+            {/* Un único destello por día con cumpleaños, sin importar
+                cuántos haya — no es un punto más de la secuencia (esos son
+                solo para eventos no-cumpleaños, ver getMobileDotSequence). */}
+            {birthdays.length > 0 && (
+              <Sparkle aria-hidden size={12} strokeWidth={1} className="fill-amber-300 text-amber-300" />
+            )}
             {mobileDots.visible.map((occurrence) => (
               <span
                 key={occurrence.id}

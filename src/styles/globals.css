@@ -123,25 +123,56 @@
     background-color: rgba(255, 255, 255, 0.85);
   }
 
-  /* Pastillas de cumpleaños de la celda de escritorio del calendario
-     (src/app/(app)/eventos/components/BirthdayPills.tsx). Implementado en
-     CSS plano y no con variantes arbitrarias de Tailwind porque `:has()`
-     con selectores compuestos queda ilegible como clase.
-     La transición va sobre flex-grow (nunca width) para que sea barata y
-     no dispare reflow del texto. El `:not(:hover)` es lo que hace crecer a
-     la pastilla apuntada en vez de colapsarla, y lo que deja intacto el
-     caso de una sola pastilla (sin :has(.ev-pill:hover) no pasa nada). */
+}
+
+/* Pastillas de cumpleaños de la celda de escritorio del calendario
+   (src/app/(app)/eventos/components/BirthdayPills.tsx). Implementado en
+   CSS plano y no con variantes arbitrarias de Tailwind porque `:has()`
+   con selectores compuestos queda ilegible como clase.
+   Va en @layer utilities (no en components, como el resto de este
+   archivo): Tailwind 4 ordena sus capas theme < base < components <
+   utilities, y esas reglas SOLO ganan si están al menos en la misma capa
+   que las utilidades px-2/py-0.5 que trae cada pastilla en su className —
+   la especificidad no importa entre capas distintas, gana siempre la capa
+   posterior. Desde components, estas reglas perdían en silencio contra
+   las utilidades de Tailwind pese a tener mucha más especificidad.
+   El `:not(:hover)` es lo que hace crecer a la pastilla apuntada en vez
+   de colapsarla, y lo que deja intacto el caso de una sola pastilla (sin
+   :has(.ev-pill:hover) no pasa nada). Al colapsar, max-width/padding van
+   a 0 y no solo flex-grow: con box-sizing: border-box el padding no
+   empuja ancho aunque siga puesto, así que la pastilla no hovered
+   desaparece del todo (texto y píldora amarilla incluidos) en vez de
+   quedar como una raya de color.
+   El espaciado entre pastillas va por margin-right en vez de `gap` en el
+   contenedor: `gap` reserva su hueco entre CADA par de hijos aunque estén
+   colapsados a 0, así que con 3+ cumpleaños la pastilla hovered nunca
+   llegaba a ocupar el 100% (le quedaban restando 1-2 gaps fantasma). Con
+   margin-right sí se puede poner a 0 por completo en estado hover,
+   incluida la propia pastilla hovered si no es la última. */
+@layer utilities {
   .ev-pills {
     display: flex;
-    gap: 3px;
     padding: 0 5%;
   }
   .ev-pill {
     flex: 1 1 0;
     min-width: 0;
-    transition: flex-grow 0.22s ease;
+    max-width: 100%;
+    margin-right: 3px;
+    transition: flex-grow 0.22s ease, max-width 0.22s ease, opacity 0.22s ease, padding 0.22s ease,
+      margin-right 0.22s ease;
+  }
+  .ev-pill:last-child {
+    margin-right: 0;
+  }
+  .ev-pills:has(.ev-pill:hover) .ev-pill {
+    margin-right: 0;
   }
   .ev-pills:has(.ev-pill:hover) .ev-pill:not(:hover) {
-    flex-grow: 0.001;
+    flex-grow: 0;
+    max-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    opacity: 0;
   }
 }
