@@ -38,6 +38,7 @@ function makeOccurrence(overrides: Partial<EventOccurrence> & { id: number }): E
     endDate: null,
     startTimeIncluded: false,
     endTimeIncluded: true,
+    liked: false,
     eventType: {
       id: 1,
       code: "GENERIC",

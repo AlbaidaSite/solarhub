@@ -35,13 +35,15 @@ export default function EventDotSlider({ dotSequence, visibleEventId, onSelect }
               aria-current={isActive}
               onMouseEnter={() => onSelect(occurrence.id)}
               onFocus={() => onSelect(occurrence.id)}
-              // Siempre grandes y sin anillo blanco: ese lenguaje visual
-              // (aro en torno al punto activo) queda reservado para otro
-              // uso futuro. La celda ahora señala qué evento está activo
+              // Siempre grandes. La celda señala qué evento está activo
               // con el relleno blanco del punto (el resto lleva el color
               // de su tipo) y con el color del contorno de la celda (ver
-              // CalendarCell.tsx).
-              className={`h-2.25 w-2.25 rounded-full transition-colors ${isActive ? "bg-white" : classes.dot}`}
+              // CalendarCell.tsx). El aro blanco de 2px sí se usa ahora:
+              // marca los eventos con interés mostrado ("campana", ver
+              // EventDetailModal.tsx/EventListModal.tsx).
+              className={`h-2.25 w-2.25 rounded-full transition-colors ${isActive ? "bg-white" : classes.dot} ${
+                occurrence.liked ? "ring-2 ring-white" : ""
+              }`}
             />
           );
         })}

@@ -5,6 +5,7 @@ import { LogOut, Pencil, UserCog } from "lucide-react";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStorageUrl, DEFAULT_AVATAR_PATH } from "@/lib/supabase/storage";
+import { getUpcomingLikedEventsAction } from "@/app/(app)/eventos/actions";
 import ProfilePanels from "./components/ProfilePanels";
 import ProfileAvatar from "./components/ProfileAvatar";
 import { logoutAction } from "./actions";
@@ -24,13 +25,14 @@ export default async function PerfilPage() {
     redirect("/login");
   }
 
-  const [profileRes, isStaffRes] = await Promise.all([
+  const [profileRes, isStaffRes, upcomingEvents] = await Promise.all([
     supabase
       .from("profile")
       .select("username, name, profile_img")
       .eq("id", user.id)
       .single(),
     supabase.rpc("is_staff"),
+    getUpcomingLikedEventsAction(),
   ]);
   const profile = profileRes.data;
   const isStaff = Boolean(isStaffRes.data);
@@ -81,7 +83,7 @@ export default async function PerfilPage() {
         </h1>
       </header>
 
-      <ProfilePanels />
+      <ProfilePanels upcomingEvents={upcomingEvents} />
     </div>
   );
 }

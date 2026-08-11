@@ -19,6 +19,14 @@ vi.mock("next/image", () => ({
   },
 }));
 
+// La campana de interés llama a esta acción de servidor — mockeada para no
+// arrastrar aquí el cliente de Supabase real (mismo motivo que en
+// EventDetailModal.test.tsx).
+vi.mock("@/app/(app)/eventos/actions", () => ({
+  toggleEventInterestAction: vi.fn(),
+}));
+
+import { toggleEventInterestAction } from "@/app/(app)/eventos/actions";
 import EventListModal from "@/app/(app)/eventos/components/EventListModal";
 
 function makeOccurrence(overrides: Partial<EventOccurrence> & { id: number }): EventOccurrence {
@@ -34,6 +42,7 @@ function makeOccurrence(overrides: Partial<EventOccurrence> & { id: number }): E
     endDate: null,
     startTimeIncluded: true,
     endTimeIncluded: true,
+    liked: false,
     eventType: {
       id: 1,
       code: "GENERIC",
@@ -59,11 +68,13 @@ function makeBirthday(overrides: Partial<EventOccurrence> & { id: number }): Eve
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   cleanup();
   document.body.innerHTML = "";
   const main = document.createElement("main");
   main.style.overflow = "auto";
   document.body.appendChild(main);
+  vi.mocked(toggleEventInterestAction).mockResolvedValue({ ok: true, liked: true });
 });
 
 describe("EventListModal · cabecera", () => {

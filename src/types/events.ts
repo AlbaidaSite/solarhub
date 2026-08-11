@@ -33,6 +33,9 @@ export interface EventOccurrenceRow {
   event_type_name: string;
   event_type_icon_path: string;
   event_type_color: string;
+  // Interés del usuario autenticado ("me gusta") sobre este evento — ver
+  // liked_event en el esquema y toggleEventInterestAction.
+  liked: boolean;
 }
 
 export interface EventOccurrence {
@@ -49,6 +52,7 @@ export interface EventOccurrence {
   startTimeIncluded: boolean;
   endTimeIncluded: boolean;
   eventType: EventTypeInfo;
+  liked: boolean;
 }
 
 export interface EventPrice {
@@ -71,6 +75,7 @@ export function toEventOccurrence(row: EventOccurrenceRow): EventOccurrence {
     endDate: row.end_date,
     startTimeIncluded: row.start_time_included,
     endTimeIncluded: row.end_time_included,
+    liked: row.liked,
     eventType: {
       id: row.event_type_id,
       code: row.event_type_code,
