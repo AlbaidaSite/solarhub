@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   AlertCircle,
   ArrowLeft,
@@ -17,20 +18,26 @@ import AuroraField from "@/components/ui/AuroraField";
 import ClockTimePicker from "@/components/ui/ClockTimePicker";
 import CornerButton from "@/components/ui/CornerButton";
 import { supabase } from "@/lib/supabase/client";
-import { addEventPhotosAction, createEventAction, type CreateEventPrice } from "../../actions";
-import MediaSection from "../../../mapa/nueva/components/MediaSection";
-import type { MediaEntry } from "../../../mapa/nueva/components/MediaSection";
+import {
+  addEventPhotosAction,
+  deleteEventPhotoAction,
+  updateEventAction,
+  type CreateEventPrice,
+  type EventEditDetail,
+} from "../../../actions";
+import MediaSection from "../../../../mapa/nueva/components/MediaSection";
+import type { MediaEntry } from "../../../../mapa/nueva/components/MediaSection";
 import { BIRTHDAY_EVENT_TYPE_CODE, type EventTypeInfo } from "@/types/events";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface NewEventFormProps {
+interface EditEventFormProps {
+  detail: EventEditDetail;
   eventTypes: EventTypeInfo[];
   isStaff: boolean;
   isLoukou: boolean;
-  initialDate: string | null;
 }
 
 interface PriceRow {
@@ -59,16 +66,22 @@ interface UploadFailure {
 
 const STORAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ?? "solarhub-assets";
 
-function todayValue(): string {
-  const d = new Date();
+// Inversas de combineDateTime (NewEventForm.tsx): un timestamp ISO se lee
+// en hora LOCAL del navegador (asumida Europe/Madrid, mismo criterio que
+// el resto del calendario) para rellenar los campos de fecha/hora sueltos
+// del formulario.
+function isoToDateInput(iso: string): string {
+  const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate(),
   ).padStart(2, "0")}`;
 }
 
-// Hora local del navegador (asumida Europe/Madrid, igual que MADRID_TZ en
-// CalendarCell.tsx) — sin hora se usa medianoche como valor neutro; el
-// flag *_time_included es lo que le dice a la UI si esa hora es real.
+function isoToTimeInput(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 function combineDateTime(date: string, time: string | null): string {
   return new Date(`${date}T${time || "00:00"}:00`).toISOString();
 }
@@ -101,39 +114,46 @@ async function uploadBlob(
 // Component
 // ---------------------------------------------------------------------------
 
-export default function NewEventForm({
-  eventTypes,
-  isStaff,
-  isLoukou,
-  initialDate,
-}: NewEventFormProps) {
+export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }: EditEventFormProps) {
   const router = useRouter();
 
-  const defaultStartDate = initialDate ?? todayValue();
-
-  // Form fields
-  const [title, setTitle] = useState("");
-  const [place, setPlace] = useState("");
-  const [eventTypeId, setEventTypeId] = useState<number | null>(eventTypes[0]?.id ?? null);
-  const [startDate, setStartDate] = useState(defaultStartDate);
-  const [startTime, setStartTime] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const [prices, setPrices] = useState<PriceRow[]>([]);
-  const [description, setDescription] = useState("");
-  const [url, setUrl] = useState("");
-  const [includesCromo, setIncludesCromo] = useState(false);
-  const [hideExternal, setHideExternal] = useState(true);
+  // Form fields — pre-filled from the existing event
+  const [title, setTitle] = useState(detail.title);
+  const [place, setPlace] = useState(detail.place ?? "");
+  const [eventTypeId, setEventTypeId] = useState<number | null>(detail.eventTypeId);
+  const [startDate, setStartDate] = useState(isoToDateInput(detail.eventDate));
+  const [startTime, setStartTime] = useState(
+    detail.startTimeIncluded ? isoToTimeInput(detail.eventDate) : "",
+  );
+  const [endDate, setEndDate] = useState(detail.endDate ? isoToDateInput(detail.endDate) : "");
+  const [endTime, setEndTime] = useState(
+    detail.endDate && detail.endTimeIncluded ? isoToTimeInput(detail.endDate) : "",
+  );
+  const [prices, setPrices] = useState<PriceRow[]>(
+    detail.prices.map((p) => ({ clientId: crypto.randomUUID(), reason: p.reason ?? "", price: String(p.price) })),
+  );
+  const [description, setDescription] = useState(detail.description ?? "");
+  const [url, setUrl] = useState(detail.url ?? "");
+  const [includesCromo, setIncludesCromo] = useState(detail.includesCromo);
+  const [hideExternal, setHideExternal] = useState(detail.hideExternal);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Media entries (managed by MediaSection, lifted here)
+  // Fotos existentes (portada + extra) — la portada se muestra pero no se
+  // puede quitar desde aquí (para eso hay que subir una nueva desde
+  // "Nuevo evento"); las fotos extra sí se pueden borrar una a una, igual
+  // que la multimedia existente en EditPinForm.
+  const [existingPhotos, setExistingPhotos] = useState(detail.photos);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<number | null>(null);
+  const [deletePhotoError, setDeletePhotoError] = useState<string | null>(null);
+
+  // New media entries (managed by MediaSection, lifted here)
   const [mediaEntries, setMediaEntries] = useState<MediaEntry[]>([]);
 
   // Submit state
   const [submitPhase, setSubmitPhase] = useState<SubmitPhase>("form");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadStatuses, setUploadStatuses] = useState<Record<string, EntryUploadStatus>>({});
   const [uploadFailures, setUploadFailures] = useState<UploadFailure[]>([]);
-  const [createdEventId, setCreatedEventId] = useState<number | null>(null);
 
   // ---------------------------------------------------------------------------
   // Derived
@@ -143,25 +163,27 @@ export default function NewEventForm({
   const hasMediaErrors = mediaEntries.some((e) => e.status === "error");
   const readyEntries = mediaEntries.filter((e) => e.status === "ready");
 
-  // Sin checkbox de "se repite anualmente" por ahora: los cumpleaños son
-  // siempre anuales y el resto de tipos nunca lo son.
   const isBirthdayType =
     eventTypes.find((et) => et.id === eventTypeId)?.code === BIRTHDAY_EVENT_TYPE_CODE;
 
-  const isDirty =
-    title !== "" ||
-    place !== "" ||
-    description !== "" ||
-    url !== "" ||
-    startDate !== defaultStartDate ||
-    startTime !== "" ||
-    endDate !== "" ||
-    endTime !== "" ||
-    prices.length > 0 ||
-    mediaEntries.length > 0;
+  // ---------------------------------------------------------------------------
+  // Existing photo deletion (immediate)
+  // ---------------------------------------------------------------------------
+
+  const handleDeleteExistingPhoto = async (photoId: number) => {
+    setDeletingPhotoId(photoId);
+    setDeletePhotoError(null);
+    const result = await deleteEventPhotoAction(photoId, detail.id);
+    setDeletingPhotoId(null);
+    if (result.ok) {
+      setExistingPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    } else {
+      setDeletePhotoError(result.error);
+    }
+  };
 
   // ---------------------------------------------------------------------------
-  // Media callbacks
+  // New media callbacks
   // ---------------------------------------------------------------------------
 
   const handleAddMedia = useCallback((newEntries: MediaEntry[]) => {
@@ -199,16 +221,7 @@ export default function NewEventForm({
   };
 
   // ---------------------------------------------------------------------------
-  // Cancel
-  // ---------------------------------------------------------------------------
-
-  const handleCancel = () => {
-    if (isDirty && !window.confirm("¿Descartar los cambios?")) return;
-    router.push("/eventos");
-  };
-
-  // ---------------------------------------------------------------------------
-  // Upload round (used by both initial submit and retry)
+  // Upload round (used by both submit and retry)
   // ---------------------------------------------------------------------------
 
   const runUploadRound = useCallback(
@@ -283,9 +296,9 @@ export default function NewEventForm({
       parsedPrices.push({ reason: row.reason.trim() || null, price: value });
     }
 
-    setSubmitPhase("uploading");
+    setIsSubmitting(true);
 
-    const eventResult = await createEventAction({
+    const updateResult = await updateEventAction(detail.id, {
       title: title.trim(),
       place: place.trim(),
       eventTypeId,
@@ -301,24 +314,25 @@ export default function NewEventForm({
       prices: parsedPrices,
     });
 
-    if (!eventResult.ok) {
-      setSubmitError(eventResult.error);
-      setSubmitPhase("form");
+    if (!updateResult.ok) {
+      setSubmitError(updateResult.error);
+      setIsSubmitting(false);
       return;
     }
-
-    const eventId = eventResult.eventId;
-    setCreatedEventId(eventId);
 
     if (readyEntries.length === 0) {
       router.push("/eventos");
+      router.refresh();
       return;
     }
 
-    const failures = await runUploadRound(eventId, readyEntries);
+    setSubmitPhase("uploading");
+    const failures = await runUploadRound(detail.id, readyEntries);
+    setIsSubmitting(false);
 
     if (failures.length === 0) {
       router.push("/eventos");
+      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -330,18 +344,17 @@ export default function NewEventForm({
   // ---------------------------------------------------------------------------
 
   const handleRetry = async () => {
-    if (!createdEventId) return;
-
     const failedIds = new Set(uploadFailures.map((f) => f.clientId));
     const entriesToRetry = mediaEntries.filter((e) => failedIds.has(e.clientId));
 
     setUploadFailures([]);
     setSubmitPhase("uploading");
 
-    const failures = await runUploadRound(createdEventId, entriesToRetry);
+    const failures = await runUploadRound(detail.id, entriesToRetry);
 
     if (failures.length === 0) {
       router.push("/eventos");
+      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -365,7 +378,7 @@ export default function NewEventForm({
           )}
           {submitPhase === "partial_error" && (
             <p className="text-chip text-amber-300 text-sm">
-              El evento se guardó correctamente pero algunas fotos no se pudieron subir.
+              El evento se actualizó correctamente pero algunas fotos no se pudieron subir.
             </p>
           )}
 
@@ -404,7 +417,7 @@ export default function NewEventForm({
               </CornerButton>
               <button
                 type="button"
-                onClick={() => router.push("/eventos")}
+                onClick={() => { router.push("/eventos"); router.refresh(); }}
                 className="text-sm text-white/50 hover:text-white transition-colors self-start cursor-pointer"
               >
                 Continuar sin esas fotos
@@ -432,7 +445,7 @@ export default function NewEventForm({
         </button>
       </div>
 
-      <h1 className="text-3xl font-bold text-white mb-8">Nuevo evento</h1>
+      <h1 className="text-3xl font-bold text-white mb-8">Editar evento</h1>
 
       <form onSubmit={handleSubmit} className="w-full max-w-lg flex flex-col gap-8">
 
@@ -522,17 +535,6 @@ export default function NewEventForm({
             <div className="flex flex-col gap-2 mb-2">
               {prices.map((row) => (
                 <div key={row.clientId} className="flex gap-2 items-center">
-                  {/* Proporción 1/5-4/5 forzada por estilo inline en un div
-                      envoltorio, no por className en el propio AuroraField:
-                      su contenedor raíz siempre lleva "w-full" fijo (ver
-                      AuroraField.tsx), así que cualquier clase de ancho/flex
-                      pasada por containerClassName competía con esa "w-full"
-                      en vez de sustituirla. Envolviendo en un div aparte, el
-                      "w-full" de AuroraField solo significa "ocupa todo ESTE
-                      envoltorio" — ya no hay conflicto. minWidth:0 explícito
-                      además anula el mínimo automático que impondría el
-                      contenido (el icono "€" o el placeholder), que si no
-                      also podía dominar por delante del ratio flex-grow. */}
                   <div style={{ flex: "1 1 0px", minWidth: 0 }}>
                     <AuroraField
                       type="text"
@@ -625,13 +627,63 @@ export default function NewEventForm({
           )}
         </div>
 
-        {/* Foto */}
+        {/* Portada + fotos existentes */}
+        {(detail.imageUrl || existingPhotos.length > 0) && (
+          <fieldset>
+            <legend className="text-sm font-medium text-zinc-400 mb-3">
+              Fotos actuales
+            </legend>
+            {deletePhotoError && (
+              <p className="text-red-400 text-sm mb-3">{deletePhotoError}</p>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              {detail.imageUrl && (
+                <div className="relative flex flex-col gap-1.5 bg-white/5 rounded-xl p-2 border border-white/10">
+                  <div className="relative w-full aspect-video bg-zinc-900 rounded-lg overflow-hidden">
+                    <Image src={detail.imageUrl} alt="" fill sizes="200px" className="object-cover" unoptimized />
+                  </div>
+                  <p className="text-xs text-white/50">Portada</p>
+                </div>
+              )}
+              {existingPhotos.map((photo) => {
+                const isDeleting = deletingPhotoId === photo.id;
+                return (
+                  <div
+                    key={photo.id}
+                    className="relative flex flex-col gap-1.5 bg-white/5 rounded-xl p-2 border border-white/10"
+                  >
+                    <div className="relative w-full aspect-video bg-zinc-900 rounded-lg overflow-hidden flex items-center justify-center">
+                      <Image src={photo.url} alt="" fill sizes="200px" className="object-cover" unoptimized />
+                      {isDeleting && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                          <Loader2 size={20} className="text-amber-300 animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-white/50">Foto</p>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteExistingPhoto(photo.id)}
+                      disabled={isDeleting || deletingPhotoId !== null}
+                      aria-label="Eliminar foto"
+                      className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white/60 hover:text-red-400 hover:bg-black/80 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
+
+        {/* Nuevas fotos */}
         <MediaSection
           entries={mediaEntries}
           onAdd={handleAddMedia}
           onRemove={handleRemoveMedia}
           onUpdate={handleUpdateMedia}
-          maxFiles={3}
+          maxFiles={Math.max(0, 3 - existingPhotos.length - (detail.imageUrl ? 1 : 0))}
           photosOnly
         />
 
@@ -671,13 +723,13 @@ export default function NewEventForm({
         <div className="flex items-center justify-between gap-4 pt-2">
           <button
             type="button"
-            onClick={handleCancel}
-            className="text-red-700 hover:text-rose-500 transition-colors text-lg font-medium cursor-pointer"
+            onClick={() => router.push("/eventos")}
+            className="text-white/50 hover:text-white transition-colors text-sm cursor-pointer"
           >
             Cancelar
           </button>
-          <CornerButton type="submit" disabled={hasProcessing}>
-            {hasProcessing ? "Procesando archivos…" : "Guardar"}
+          <CornerButton type="submit" disabled={isSubmitting || hasProcessing || deletingPhotoId !== null}>
+            {isSubmitting ? "Guardando…" : hasProcessing ? "Procesando archivos…" : "Guardar cambios"}
           </CornerButton>
         </div>
       </form>

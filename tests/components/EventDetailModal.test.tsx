@@ -22,11 +22,27 @@ vi.mock("next/image", () => ({
   },
 }));
 
-vi.mock("@/app/(app)/eventos/actions", () => ({
-  getEventPricesAction: vi.fn(),
+// Stub mínimo de next/navigation: el modal usa useRouter() para navegar a
+// "editar" — sin este stub, renderizar el componente en jsdom revienta con
+// "invariant expected app router to be mounted" (no hay <AppRouterContext>
+// de verdad en un test de componente aislado).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
 }));
 
-import { getEventPricesAction } from "@/app/(app)/eventos/actions";
+vi.mock("@/app/(app)/eventos/actions", () => ({
+  getEventPricesAction: vi.fn(),
+  getEventExtraPhotosAction: vi.fn(),
+  checkEventEditPermissionAction: vi.fn(),
+  deleteEventAction: vi.fn(),
+}));
+
+import {
+  checkEventEditPermissionAction,
+  deleteEventAction,
+  getEventExtraPhotosAction,
+  getEventPricesAction,
+} from "@/app/(app)/eventos/actions";
 import EventDetailModal from "@/app/(app)/eventos/components/EventDetailModal";
 
 const baseOccurrence: EventOccurrence = {
@@ -72,6 +88,12 @@ beforeEach(() => {
   main.style.overflow = "auto";
   document.body.appendChild(main);
   vi.mocked(getEventPricesAction).mockResolvedValue([]);
+  vi.mocked(getEventExtraPhotosAction).mockResolvedValue([]);
+  // Sin permiso por defecto: los tests existentes no esperan ver los
+  // botones de editar/eliminar en pantalla. Los tests específicos de esa
+  // funcionalidad sobreescriben esto con mockResolvedValueOnce.
+  vi.mocked(checkEventEditPermissionAction).mockResolvedValue({ isOwner: false, isStaff: false });
+  vi.mocked(deleteEventAction).mockResolvedValue({ ok: true });
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
 });
 
