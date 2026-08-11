@@ -8,6 +8,12 @@ export const useScrollDirection = (container?: HTMLElement | null) => {
     const THRESHOLD = 10; // altura desde la cual permitimos ocultar
     const DELTA = 1;      // mínima variación para evitar parpadeos
 
+    // `container` cambia en cada navegación (el <main> se remonta con
+    // key={pathname}): sin esto, un navbar oculto por scroll en la
+    // página anterior seguía oculto en la nueva sin ningún evento de
+    // scroll que lo volviera a mostrar.
+    setIsVisible(true);
+
     const getY = () => (container ? container.scrollTop : window.scrollY);
 
     let rafId: number | null = null;
