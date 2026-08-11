@@ -24,6 +24,7 @@ interface CalendarCellProps {
   onEventSelect?: (eventId: number, occurrenceDate: string) => void;
   onDaySelect?: (dateKey: string) => void;
   onCreateEvent?: (dateKey: string) => void;
+  onInterestToggled?: (eventId: number, liked: boolean) => void;
 }
 
 // Una sola rejilla para escritorio y móvil: los dos bloques de marcado se
@@ -40,6 +41,7 @@ export default function CalendarCell({
   onEventSelect,
   onDaySelect,
   onCreateEvent,
+  onInterestToggled,
 }: CalendarCellProps) {
   const ref = useRef<HTMLDivElement>(null);
   const { cellProps, buttonProps, isOutsideVisibleRange, formattedDate } = useCalendarCell(
@@ -153,7 +155,7 @@ export default function CalendarCell({
               {formattedDate}
             </span>
           </div>
-          <BirthdayPills birthdays={birthdays} />
+          <BirthdayPills birthdays={birthdays} onInterestToggled={onInterestToggled} />
           <EventDotSlider
             dotSequence={desktopDots}
             visibleEventId={visibleEventId}
@@ -196,7 +198,9 @@ export default function CalendarCell({
             {mobileDots.visible.map((occurrence) => (
               <span
                 key={occurrence.id}
-                className={`h-1.5 w-1.5 rounded-full ${eventTypeClasses(occurrence.eventType.color).dot}`}
+                className={`h-1.5 w-1.5 rounded-full ${eventTypeClasses(occurrence.eventType.color).dot} ${
+                  occurrence.liked ? "ring-2 ring-white" : ""
+                }`}
               />
             ))}
             {mobileDots.overflowCount > 0 && (

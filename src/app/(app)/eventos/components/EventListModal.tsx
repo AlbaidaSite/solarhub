@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 import { useDialog, FocusScope } from "react-aria";
-import { Cake, Plus, X } from "lucide-react";
-import { eventTypeClasses } from "@/lib/eventTypeClasses";
+import { Plus, X } from "lucide-react";
 import { isBirthday, type EventOccurrence } from "@/types/events";
-import { formatEventTime } from "../lib/formatting";
+import { toggleEventInterestAction } from "../actions";
+import EventListRow from "./EventListRow";
 
 const MADRID_TZ = "Europe/Madrid";
 
@@ -16,6 +15,10 @@ interface EventListModalProps {
   onSelectEvent: (eventId: number) => void;
   onCreateEvent: (dateKey: string) => void;
   onClose: () => void;
+  // Ver EventDetailModal.tsx: mismo callback, así una campana marcada aquí
+  // se refleja también en el borde del punto de tipo de evento y en la
+  // propia campana del modal de detalle sin recargar el mes.
+  onInterestToggled?: (eventId: number, liked: boolean) => void;
 }
 
 // Modal de lista, solo móvil. Navegación con el detalle por SUSTITUCIÓN
@@ -29,9 +32,41 @@ export default function EventListModal({
   onSelectEvent,
   onCreateEvent,
   onClose,
+  onInterestToggled,
 }: EventListModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const { dialogProps, titleProps } = useDialog({}, dialogRef);
+  // Ids con una llamada a toggleEventInterestAction en curso — evita doble
+  // clic sobre la misma fila mientras resuelve, sin bloquear el resto.
+  const [pendingInterestIds, setPendingInterestIds] = useState<Set<number>>(new Set());
+
+  // Optimista, al estilo "like" de Instagram: la campana cambia al
+  // instante (vía onInterestToggled, que actualiza la caché de meses
+  // compartida en EventsCalendar.tsx — así el cambio se ve también en el
+  // modal de detalle y en el punto de tipo de evento sin esperar al
+  // servidor) y solo se deshace si la petición termina fallando.
+  const handleToggleInterest = (occurrence: EventOccurrence) => {
+    const eventId = occurrence.id;
+    const nextLiked = !occurrence.liked;
+    setPendingInterestIds((prev) => new Set(prev).add(eventId));
+    onInterestToggled?.(eventId, nextLiked);
+    toggleEventInterestAction(eventId)
+      .then((result) => {
+        if (result.ok) {
+          if (result.liked !== nextLiked) onInterestToggled?.(eventId, result.liked);
+        } else {
+          onInterestToggled?.(eventId, !nextLiked);
+          console.error("EventListModal: fallo al alternar el interés", result.error);
+        }
+      })
+      .finally(() => {
+        setPendingInterestIds((prev) => {
+          const next = new Set(prev);
+          next.delete(eventId);
+          return next;
+        });
+      });
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -107,72 +142,16 @@ export default function EventListModal({
           </div>
 
           <ul className="flex flex-col gap-2">
-            {ordered.map((occurrence) => {
-              const birthday = isBirthday(occurrence);
-              const classes = eventTypeClasses(occurrence.eventType.color);
-              const timeLabel = formatEventTime(occurrence.eventDate, occurrence.startTimeIncluded);
-
-              return (
-                <li key={occurrence.id}>
-                  <div
-                    role={birthday ? undefined : "button"}
-                    tabIndex={birthday ? undefined : 0}
-                    onClick={birthday ? undefined : () => onSelectEvent(occurrence.id)}
-                    onKeyDown={
-                      birthday
-                        ? undefined
-                        : (e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              onSelectEvent(occurrence.id);
-                            }
-                          }
-                    }
-                    className={`flex items-center gap-3 rounded-xl border p-2 transition-colors ${
-                      birthday
-                        ? "border-white/10 cursor-default"
-                        : "border-white/10 hover:border-white/30 cursor-pointer"
-                    }`}
-                  >
-                    <div
-                      className={`relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border-2 ${classes.badgeBorder}`}
-                    >
-                      {birthday ? (
-                        <div className={`flex h-full w-full items-center justify-center ${classes.dot}`}>
-                          <Cake size={20} className="text-white" />
-                        </div>
-                      ) : occurrence.imageUrl ? (
-                        <Image
-                          src={occurrence.imageUrl}
-                          alt=""
-                          fill
-                          sizes="48px"
-                          className="object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <div className={`flex h-full w-full items-center justify-center ${classes.dot}`}>
-                          <div className="relative h-6 w-6">
-                            <Image
-                              src={occurrence.eventType.icon_path}
-                              alt=""
-                              fill
-                              sizes="24px"
-                              className="object-contain"
-                              unoptimized
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-1 flex-col min-w-0">
-                      <span className="text-white font-medium truncate">{occurrence.title}</span>
-                      {timeLabel && <span className="text-sm text-white/50">{timeLabel}</span>}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
+            {ordered.map((occurrence) => (
+              <li key={occurrence.id}>
+                <EventListRow
+                  occurrence={occurrence}
+                  onSelect={onSelectEvent}
+                  onToggleInterest={handleToggleInterest}
+                  isInterestPending={pendingInterestIds.has(occurrence.id)}
+                />
+              </li>
+            ))}
           </ul>
         </div>
       </FocusScope>

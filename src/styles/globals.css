@@ -162,8 +162,52 @@
     transition: flex-grow 0.22s ease, max-width 0.22s ease, opacity 0.22s ease, padding 0.22s ease,
       margin-right 0.22s ease;
   }
+  /* Centrada en la celda mientras está sola y a su tamaño de contenido
+     (ver :only-child más abajo) — sin esto se pegaría al borde
+     izquierdo, que es donde cae por defecto un único flex item. */
+  .ev-pills:has(.ev-pill:only-child) {
+    justify-content: center;
+  }
   .ev-pill:last-child {
     margin-right: 0;
+  }
+  /* Con un solo cumpleaños no hay reparto que hacer: en vez de estirarse
+     a ocupar toda la celda (flex-basis 0 de la regla de arriba), se
+     achica al ancho de su propio nombre — flex-basis auto, sin grow. Si
+     el nombre es más largo que la celda, flex-shrink (heredado, sigue en
+     1) lo reduce igual que antes hasta max-width: 100%, así que un
+     nombre largo se sigue viendo recortado con ellipsis como siempre.
+     Con dos o más pastillas se mantiene el reparto igual de antes
+     (arriba): repartir el ancho a ojo según el tamaño de cada nombre y
+     achicar primero las más grandes hasta igualarlas no es algo que
+     flex-shrink haga de fábrica (por spec reparte proporcionalmente al
+     tamaño base, no iguala), así que replicarlo tal cual pediría medir
+     cada pastilla en JS (ResizeObserver + recalcular en cada resize) —
+     demasiado para un adorno del calendario. */
+  .ev-pill:only-child {
+    flex: 0 1 auto;
+    /* Más aire a los lados que el px-2 (8px) de la clase base: al ir
+       ajustada al nombre en vez de estirada a toda la celda, con el
+       mismo padding se veía muy pegada al texto. */
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+  /* En hover/foco, vuelve a cubrir el mismo ancho que antes (toda la
+     celda): basis se queda en "auto" en los dos estados (solo cambia
+     flex-grow, de 0 a 1) para poder animarlo con la transition de
+     flex-grow de arriba — pasar flex-basis de "auto" a un valor
+     numérico no se anima limpiamente en los navegadores. El padding
+     extra de arriba es solo para el estado compacto (pegado al nombre);
+     expandida debe quedar con el mismo padding que cualquier otra
+     pastilla en hover, si no sus campanas quedan más metidas hacia
+     dentro que las de una pastilla cualquiera en una fila con varios
+     cumpleaños — de ahí que aquí vuelva al px-2 (0.5rem) de la clase
+     base, animado con la misma transition de padding de arriba. */
+  .ev-pill:only-child:hover,
+  .ev-pill:only-child:focus-visible {
+    flex-grow: 1;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
   }
   .ev-pills:has(.ev-pill:hover) .ev-pill {
     margin-right: 0;
@@ -174,5 +218,39 @@
     padding-left: 0;
     padding-right: 0;
     opacity: 0;
+  }
+
+  /* Campanas a los lados del título (BirthdayPills.tsx): a ancho 0 por
+     defecto, así que NO le quitan sitio al nombre salvo cuando la propia
+     pastilla está en hover o con foco de teclado — es entonces cuando se
+     revelan (ancho + margen que las separa del texto) a la vez que la
+     pastilla ya se ha expandido (ver reglas de arriba). Igual criterio de
+     margin en vez de gap que el resto de este bloque: que no quede hueco
+     reservado mientras están colapsadas. :first-child/:last-child en vez
+     de una clase aparte por lado: los dos spans de campana son siempre el
+     primer y último hijo del botón (el título va en medio). */
+  .ev-pill-icon {
+    width: 0;
+    opacity: 0;
+    transition: width 0.15s ease, opacity 0.15s ease, margin 0.15s ease;
+  }
+  .ev-pill-icon:first-child {
+    margin-right: 0;
+  }
+  .ev-pill-icon:last-child {
+    margin-left: 0;
+  }
+  .ev-pill:hover .ev-pill-icon,
+  .ev-pill:focus-visible .ev-pill-icon {
+    width: 16px;
+    opacity: 1;
+  }
+  .ev-pill:hover .ev-pill-icon:first-child,
+  .ev-pill:focus-visible .ev-pill-icon:first-child {
+    margin-right: 4px;
+  }
+  .ev-pill:hover .ev-pill-icon:last-child,
+  .ev-pill:focus-visible .ev-pill-icon:last-child {
+    margin-left: 4px;
   }
 }

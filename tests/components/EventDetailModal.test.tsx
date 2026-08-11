@@ -35,6 +35,7 @@ vi.mock("@/app/(app)/eventos/actions", () => ({
   getEventExtraPhotosAction: vi.fn(),
   checkEventEditPermissionAction: vi.fn(),
   deleteEventAction: vi.fn(),
+  toggleEventInterestAction: vi.fn(),
 }));
 
 import {
@@ -58,6 +59,7 @@ const baseOccurrence: EventOccurrence = {
   endDate: null,
   startTimeIncluded: true,
   endTimeIncluded: true,
+  liked: false,
   eventType: {
     id: 3,
     code: "PARTY",

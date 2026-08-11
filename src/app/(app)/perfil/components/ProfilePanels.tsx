@@ -1,10 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import type { EventOccurrence } from "@/types/events";
+import UpcomingEventsList from "./UpcomingEventsList";
 
 type Panel = "eventos" | "historial";
 
-export default function ProfilePanels() {
+interface ProfilePanelsProps {
+  upcomingEvents: EventOccurrence[];
+}
+
+export default function ProfilePanels({ upcomingEvents }: ProfilePanelsProps) {
   const [panel, setPanel] = useState<Panel>("eventos");
 
   return (
@@ -23,7 +29,7 @@ export default function ProfilePanels() {
         <h2 className="hidden md:block text-2xl font-bold text-white text-center mb-4">
           Eventos pendientes
         </h2>
-        {/* Contenido pendiente */}
+        <UpcomingEventsList initialEvents={upcomingEvents} />
       </PanelSection>
 
       <div

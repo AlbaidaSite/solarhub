@@ -13,6 +13,22 @@ import {
 
 type ServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
+// `image_url` y `event_type.icon_path` guardan rutas de Storage, no URLs
+// públicas — se resuelven aquí, igual que en mapa/actions.ts. Compartido
+// por todo lo que lee filas de events_in_range (rejilla del calendario y
+// el listado de "eventos pendientes" del perfil).
+function resolveOccurrenceRow(row: EventOccurrenceRow): EventOccurrence {
+  const occurrence = toEventOccurrence(row);
+  return {
+    ...occurrence,
+    imageUrl: occurrence.imageUrl ? getStorageUrl(occurrence.imageUrl) : null,
+    eventType: {
+      ...occurrence.eventType,
+      icon_path: getStorageUrl(occurrence.eventType.icon_path),
+    },
+  };
+}
+
 // Sin gating por rol: todos los usuarios activos ven todos los eventos
 // (política event_select_auth). Se llama tanto desde el Server Component
 // de la página (carga inicial) como desde el cliente al navegar de mes.
@@ -40,20 +56,79 @@ export async function getEventOccurrencesInRangeAction(
   }
 
   const rows = (data ?? []) as EventOccurrenceRow[];
+  return rows.map(resolveOccurrenceRow);
+}
 
-  // `image_url` y `event_type.icon_path` guardan rutas de Storage, no URLs
-  // públicas — se resuelven aquí, igual que en mapa/actions.ts.
-  return rows.map((row) => {
-    const occurrence = toEventOccurrence(row);
-    return {
-      ...occurrence,
-      imageUrl: occurrence.imageUrl ? getStorageUrl(occurrence.imageUrl) : null,
-      eventType: {
-        ...occurrence.eventType,
-        icon_path: getStorageUrl(occurrence.eventType.icon_path),
-      },
-    };
+// ─── Eventos marcados con interés, próximos (perfil) ─────────────────────────
+// Reutiliza events_in_range en vez de una consulta aparte: la expansión de
+// recurrencia anual (un cumpleaños YEARLY, p.ej.) ya vive ahí y no
+// conviene duplicarla. El rango va de "hoy" (Europe/Madrid) a +400 días —
+// suficiente para que cualquier evento YEARLY marcado aparezca por su
+// próxima ocurrencia sin importar en qué punto del año esté ahora mismo.
+
+function todayInMadrid(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Madrid",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+function addDaysToIsoDate(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+// Tope de eventos "próximos" mostrados a la vez en el perfil — con muchos
+// eventos marcados, la lista debe scrollear dentro de su propio panel en
+// vez de crecer sin límite (ver UpcomingEventsList.tsx).
+const MAX_UPCOMING_LIKED_EVENTS = 20;
+
+export async function getUpcomingLikedEventsAction(): Promise<EventOccurrence[]> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return [];
+  const { supabase } = auth;
+
+  const rangeStart = todayInMadrid();
+  const rangeEnd = addDaysToIsoDate(rangeStart, 400);
+
+  const { data, error } = await supabase.rpc("events_in_range", {
+    range_start: rangeStart,
+    range_end: rangeEnd,
   });
+
+  if (error) {
+    console.error("Error loading upcoming liked events:", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    return [];
+  }
+
+  const rows = (data ?? []) as EventOccurrenceRow[];
+
+  // Una ventana de 400 días es más ancha que un año: un evento YEARLY
+  // cuya fecha caiga dentro de los primeros ~35 días desde "hoy" proyecta
+  // AMBAS ocurrencias (la de este año y la del año que viene) dentro del
+  // rango, mismo id de evento en dos filas. Aquí solo interesa "la
+  // próxima vez que toca" — nos quedamos con la primera aparición de cada
+  // id (events_in_range ya ordena por occurrence_date ascendente, así que
+  // la primera es la más próxima) y se descarta el resto.
+  const seenEventIds = new Set<number>();
+  const nextOccurrencePerEvent: EventOccurrenceRow[] = [];
+  for (const row of rows) {
+    if (!row.liked || seenEventIds.has(row.id)) continue;
+    seenEventIds.add(row.id);
+    nextOccurrencePerEvent.push(row);
+    if (nextOccurrencePerEvent.length >= MAX_UPCOMING_LIKED_EVENTS) break;
+  }
+
+  return nextOccurrencePerEvent.map(resolveOccurrenceRow);
 }
 
 // ─── Precios del evento (bajo demanda, modal de detalle) ─────────────────────
@@ -518,4 +593,39 @@ export async function deleteEventAction(eventId: number): Promise<EventActionRes
   const { error } = await supabase.from("event").delete().eq("id", eventId);
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+// ─── Interés ("mostrar interés") ─────────────────────────────────────────────
+// Alterna la fila en liked_event para el usuario actual — sin permisos de
+// dueño/staff, cualquier autenticado puede marcar interés en cualquier
+// evento (política liked_event_write_self, ver
+// 20260810140000_drop_attending_add_liked_event.sql).
+
+export type ToggleInterestResult = { ok: true; liked: boolean } | { ok: false; error: string };
+
+export async function toggleEventInterestAction(eventId: number): Promise<ToggleInterestResult> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase, userId } = auth;
+
+  const { data: existing, error: selectError } = await supabase
+    .from("liked_event")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("event_id", eventId)
+    .maybeSingle<{ id: number }>();
+
+  if (selectError) return { ok: false, error: selectError.message };
+
+  if (existing) {
+    const { error: deleteError } = await supabase.from("liked_event").delete().eq("id", existing.id);
+    if (deleteError) return { ok: false, error: deleteError.message };
+    return { ok: true, liked: false };
+  }
+
+  const { error: insertError } = await supabase
+    .from("liked_event")
+    .insert({ user_id: userId, event_id: eventId });
+  if (insertError) return { ok: false, error: insertError.message };
+  return { ok: true, liked: true };
 }

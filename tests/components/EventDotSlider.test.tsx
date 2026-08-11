@@ -21,6 +21,7 @@ function makeOccurrence(id: number): EventOccurrence {
     endDate: null,
     startTimeIncluded: false,
     endTimeIncluded: true,
+    liked: false,
     eventType: {
       id: 1,
       code: "GENERIC",

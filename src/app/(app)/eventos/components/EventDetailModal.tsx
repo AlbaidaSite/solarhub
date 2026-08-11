@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useDialog, FocusScope } from "react-aria";
-import { ArrowLeft, Check, ExternalLink, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, BellOff, BellRing, Check, ExternalLink, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
 import { eventTypeClasses } from "@/lib/eventTypeClasses";
 import { isBirthday, type EventOccurrence, type EventPrice } from "@/types/events";
 import {
@@ -12,6 +12,7 @@ import {
   deleteEventAction,
   getEventExtraPhotosAction,
   getEventPricesAction,
+  toggleEventInterestAction,
 } from "../actions";
 import { formatEventDateOnly, formatEventEndDate, formatEventPrice, formatEventTime } from "../lib/formatting";
 
@@ -25,6 +26,11 @@ interface EventDetailModalProps {
   // Presente cuando el llamante puede refrescar su lista de eventos tras
   // un borrado (ver EventsCalendar.tsx).
   onDelete?: () => void;
+  // Notifica al llamante tras alternar el interés, para que actualice su
+  // caché de ocurrencias (misma idea que onDelete) — así el borde del
+  // punto de tipo de evento y el resto de campanas del mismo evento
+  // (listado móvil) se refrescan sin volver a pedir el mes entero.
+  onInterestToggled?: (eventId: number, liked: boolean) => void;
 }
 
 type DeleteStep = null | "confirm1" | "confirm2";
@@ -35,7 +41,13 @@ type DeleteStep = null | "confirm1" | "confirm2";
 // en desarrollo en vez de renderizar un modal vacío. La comprobación va
 // DESPUÉS de todos los hooks (nunca antes de un return condicional: los
 // hooks deben ejecutarse siempre en el mismo orden).
-export default function EventDetailModal({ occurrence, onClose, onBack, onDelete }: EventDetailModalProps) {
+export default function EventDetailModal({
+  occurrence,
+  onClose,
+  onBack,
+  onDelete,
+  onInterestToggled,
+}: EventDetailModalProps) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDivElement>(null);
   const { dialogProps, titleProps } = useDialog({}, dialogRef);
@@ -58,6 +70,7 @@ export default function EventDetailModal({ occurrence, onClose, onBack, onDelete
   const [deleteStep, setDeleteStep] = useState<DeleteStep>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeletePending, startDeleteTransition] = useTransition();
+  const [isInterestPending, startInterestTransition] = useTransition();
 
   const goBackOrClose = onBack ?? onClose;
   const canEdit = permission.isOwner || permission.isStaff;
@@ -168,6 +181,50 @@ export default function EventDetailModal({ occurrence, onClose, onBack, onDelete
       }
     });
   };
+
+  // Optimista, al estilo "like" de Instagram: la campana cambia al
+  // instante (vía onInterestToggled, que actualiza la caché de meses de
+  // EventsCalendar.tsx) y solo se deshace si la petición termina
+  // fallando — así se siente al momento aunque el servidor tarde.
+  const handleToggleInterest = () => {
+    const nextLiked = !occurrence.liked;
+    onInterestToggled?.(occurrence.id, nextLiked);
+    startInterestTransition(async () => {
+      const result = await toggleEventInterestAction(occurrence.id);
+      if (result.ok) {
+        if (result.liked !== nextLiked) onInterestToggled?.(occurrence.id, result.liked);
+      } else {
+        onInterestToggled?.(occurrence.id, !nextLiked);
+        console.error("EventDetailModal: fallo al alternar el interés", result.error);
+      }
+    });
+  };
+
+  // Mostrar interés — cualquier autenticado, sin relación con canEdit.
+  // Anclada a la esquina superior IZQUIERDA de la imagen (editar/eliminar
+  // ocupan la derecha), mismo círculo negro que esos botones pero algo
+  // más grande (w-10 en vez de w-9) para que quepa un icono más grande
+  // sin quedar apretado. Blanco/80 en reposo, blanco puro en hover,
+  // amarillo cuando ya hay interés marcado (y blanco en hover también en
+  // ese estado).
+  const interestButton = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        handleToggleInterest();
+      }}
+      disabled={isInterestPending}
+      aria-label={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
+      aria-pressed={occurrence.liked}
+      title={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
+      className={`absolute top-3 left-3 z-10 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-50 ${
+        occurrence.liked ? "text-yellow-400 hover:text-white" : "text-white/80 hover:text-white"
+      }`}
+    >
+      {occurrence.liked ? <BellRing size={24} /> : <BellOff size={24} />}
+    </button>
+  );
 
   // Editar / eliminar — solo dueño del evento o staff. Ancladas a la
   // esquina superior derecha de la IMAGEN (no del modal), con círculo
@@ -312,6 +369,7 @@ export default function EventDetailModal({ occurrence, onClose, onBack, onDelete
                   alt={occurrence.title}
                   className="max-w-full max-h-[42rem] w-auto h-auto rounded-xl border border-white/10 object-contain bg-zinc-900"
                 />
+                {interestButton}
                 {editDeleteButtons}
               </div>
             ) : (
@@ -328,6 +386,7 @@ export default function EventDetailModal({ occurrence, onClose, onBack, onDelete
                     unoptimized
                   />
                 </div>
+                {interestButton}
                 {editDeleteButtons}
               </div>
             )}

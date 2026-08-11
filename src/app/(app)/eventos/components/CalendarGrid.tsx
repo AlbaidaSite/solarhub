@@ -15,6 +15,7 @@ interface CalendarGridProps {
   onEventSelect?: (eventId: number, occurrenceDate: string) => void;
   onDaySelect?: (dateKey: string) => void;
   onCreateEvent?: (dateKey: string) => void;
+  onInterestToggled?: (eventId: number, liked: boolean) => void;
 }
 
 export default function CalendarGrid({
@@ -26,6 +27,7 @@ export default function CalendarGrid({
   onEventSelect,
   onDaySelect,
   onCreateEvent,
+  onInterestToggled,
 }: CalendarGridProps) {
   const { locale } = useLocale();
   const { gridProps, headerProps, weekDays } = useCalendarGrid({}, state);
@@ -69,6 +71,7 @@ export default function CalendarGrid({
                   onEventSelect={onEventSelect}
                   onDaySelect={onDaySelect}
                   onCreateEvent={onCreateEvent}
+                  onInterestToggled={onInterestToggled}
                 />
               ) : (
                 <td key={i} />

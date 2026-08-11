@@ -339,6 +339,23 @@ function EventsCalendarInner({
     });
   }
 
+  // Refleja el interés en TODOS los meses cacheados (mismo motivo que
+  // handleEventDeleted: un evento YEARLY aparece bajo el mismo id en
+  // varios meses/años a la vez), sin volver a pedir nada al servidor —
+  // la respuesta de toggleEventInterestAction ya trae el nuevo estado.
+  function handleEventInterestToggled(eventId: number, liked: boolean) {
+    setMonthCache((prev) => {
+      const next = new Map<string, EventOccurrence[]>();
+      for (const [key, occurrences] of prev) {
+        next.set(
+          key,
+          occurrences.map((o) => (o.id === eventId ? { ...o, liked } : o)),
+        );
+      }
+      return next;
+    });
+  }
+
   const { calendarProps, prevButtonProps, nextButtonProps, title } = useCalendar(
     { "aria-label": "Calendario de eventos" },
     state,
@@ -431,6 +448,7 @@ function EventsCalendarInner({
           onEventSelect={handleEventSelect}
           onDaySelect={handleDaySelect}
           onCreateEvent={handleCreateEvent}
+          onInterestToggled={handleEventInterestToggled}
         />
       </div>
 
@@ -449,6 +467,7 @@ function EventsCalendarInner({
                   : undefined
               }
               onDelete={() => handleEventDeleted(occurrence.id, occurrence.occurrenceDate)}
+              onInterestToggled={handleEventInterestToggled}
             />
           );
         })()}
@@ -474,6 +493,7 @@ function EventsCalendarInner({
               }}
               onCreateEvent={handleCreateEvent}
               onClose={() => setModal({ view: "closed" })}
+              onInterestToggled={handleEventInterestToggled}
             />
           );
         })()}
