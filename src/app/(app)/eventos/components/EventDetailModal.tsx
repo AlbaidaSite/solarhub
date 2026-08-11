@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useDialog, FocusScope } from "react-aria";
-import { ArrowLeft, Check, ExternalLink, Share2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
 import { eventTypeClasses } from "@/lib/eventTypeClasses";
 import { isBirthday, type EventOccurrence, type EventPrice } from "@/types/events";
-import { getEventPricesAction } from "../actions";
+import {
+  checkEventEditPermissionAction,
+  deleteEventAction,
+  getEventExtraPhotosAction,
+  getEventPricesAction,
+} from "../actions";
 import { formatEventDateOnly, formatEventEndDate, formatEventPrice, formatEventTime } from "../lib/formatting";
 
 interface EventDetailModalProps {
@@ -16,7 +22,12 @@ interface EventDetailModalProps {
   // día (móvil): sustituye el cierre por una flecha "volver" — Escape y el
   // botón hacen lo mismo, vuelven a la lista en vez de cerrar del todo.
   onBack?: () => void;
+  // Presente cuando el llamante puede refrescar su lista de eventos tras
+  // un borrado (ver EventsCalendar.tsx).
+  onDelete?: () => void;
 }
+
+type DeleteStep = null | "confirm1" | "confirm2";
 
 // Un cumpleaños nunca debe llegar hasta aquí (ver BirthdayPills.tsx y
 // EventListModal.tsx: los cumpleaños no son clicables en ningún sitio).
@@ -24,7 +35,8 @@ interface EventDetailModalProps {
 // en desarrollo en vez de renderizar un modal vacío. La comprobación va
 // DESPUÉS de todos los hooks (nunca antes de un return condicional: los
 // hooks deben ejecutarse siempre en el mismo orden).
-export default function EventDetailModal({ occurrence, onClose, onBack }: EventDetailModalProps) {
+export default function EventDetailModal({ occurrence, onClose, onBack, onDelete }: EventDetailModalProps) {
+  const router = useRouter();
   const dialogRef = useRef<HTMLDivElement>(null);
   const { dialogProps, titleProps } = useDialog({}, dialogRef);
 
@@ -32,16 +44,43 @@ export default function EventDetailModal({ occurrence, onClose, onBack }: EventD
   const [copied, setCopied] = useState(false);
   const latestPriceRequestIdRef = useRef<number | null>(null);
 
+  // Fotos extra (event_photo) para el carrusel — la portada ya llega
+  // resuelta en occurrence.imageUrl, sin esperar a esta petición.
+  const [extraPhotos, setExtraPhotos] = useState<string[]>([]);
+  const [activePhotoIdx, setActivePhotoIdx] = useState(0);
+  const latestPhotosRequestIdRef = useRef<number | null>(null);
+
+  // Permiso de edición/borrado: dueño del evento o staff. Se distinguen
+  // ambos casos (no un booleano combinado) porque un staff editando/
+  // borrando el evento de OTRO usuario muestra los botones en rojo, para
+  // que no se confunda con "estoy editando mi propio evento".
+  const [permission, setPermission] = useState({ isOwner: false, isStaff: false });
+  const [deleteStep, setDeleteStep] = useState<DeleteStep>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeletePending, startDeleteTransition] = useTransition();
+
   const goBackOrClose = onBack ?? onClose;
+  const canEdit = permission.isOwner || permission.isStaff;
+  const isStaffActingOnOthersEvent = permission.isStaff && !permission.isOwner;
+
+  useEffect(() => {
+    checkEventEditPermissionAction(occurrence.id).then(setPermission);
+  }, [occurrence.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") goBackOrClose();
+      if (e.key === "Escape") {
+        if (deleteStep !== null) {
+          setDeleteStep(null);
+        } else {
+          goBackOrClose();
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onBack, onClose]);
+  }, [onBack, onClose, deleteStep]);
 
   useEffect(() => {
     const main = document.querySelector("main");
@@ -78,6 +117,19 @@ export default function EventDetailModal({ occurrence, onClose, onBack }: EventD
       });
   }, [occurrence.id]);
 
+  useEffect(() => {
+    setActivePhotoIdx(0);
+    latestPhotosRequestIdRef.current = occurrence.id;
+    getEventExtraPhotosAction(occurrence.id)
+      .then((rows) => {
+        if (latestPhotosRequestIdRef.current === occurrence.id) setExtraPhotos(rows);
+      })
+      .catch((err) => {
+        console.error("EventDetailModal: fallo al cargar las fotos adicionales del evento", err);
+        if (latestPhotosRequestIdRef.current === occurrence.id) setExtraPhotos([]);
+      });
+  }, [occurrence.id]);
+
   if (isBirthday(occurrence)) {
     console.error(
       "EventDetailModal: se intentó abrir el detalle de un cumpleaños; los cumpleaños no tienen modal de detalle.",
@@ -85,6 +137,10 @@ export default function EventDetailModal({ occurrence, onClose, onBack }: EventD
     );
     return null;
   }
+
+  // Portada + fotos extra, en orden — la portada siempre va primera.
+  const allPhotos = occurrence.imageUrl ? [occurrence.imageUrl, ...extraPhotos] : extraPhotos;
+  const activePhotoUrl = allPhotos[activePhotoIdx] ?? occurrence.imageUrl ?? null;
 
   const classes = eventTypeClasses(occurrence.eventType.color);
   const dateLabel = formatEventDateOnly(occurrence.occurrenceDate);
@@ -99,6 +155,57 @@ export default function EventDetailModal({ occurrence, onClose, onBack }: EventD
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
+
+  const handleDelete = () => {
+    startDeleteTransition(async () => {
+      setDeleteError(null);
+      const result = await deleteEventAction(occurrence.id);
+      if (result.ok) {
+        onDelete?.();
+      } else {
+        setDeleteError(result.error);
+        setDeleteStep(null);
+      }
+    });
+  };
+
+  // Editar / eliminar — solo dueño del evento o staff. Ancladas a la
+  // esquina superior derecha de la IMAGEN (no del modal), con círculo
+  // negro detrás de cada icono para distinguirse de cualquier fondo. En
+  // rojo cuando quien edita es staff pero NO el dueño, para no
+  // confundirlo con "es mi evento".
+  const editDeleteButtons = canEdit ? (
+    <div
+      className="absolute top-3 right-3 z-10 flex items-center gap-2"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={() => router.push(`/eventos/editar/${occurrence.id}`)}
+        aria-label="Editar evento"
+        title={isStaffActingOnOthersEvent ? "Editar (evento de otro usuario)" : "Editar"}
+        className={`w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors cursor-pointer ${
+          isStaffActingOnOthersEvent ? "text-red-400 hover:text-red-300" : "text-white/80 hover:text-amber-300"
+        }`}
+      >
+        <Pencil size={18} />
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setDeleteError(null);
+          setDeleteStep("confirm1");
+        }}
+        aria-label="Eliminar evento"
+        title={isStaffActingOnOthersEvent ? "Eliminar (evento de otro usuario)" : "Eliminar"}
+        className={`w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors cursor-pointer ${
+          isStaffActingOnOthersEvent ? "text-red-400 hover:text-red-300" : "text-white/80 hover:text-red-400"
+        }`}
+      >
+        <Trash2 size={18} />
+      </button>
+    </div>
+  ) : null;
 
   return (
     <div
@@ -128,23 +235,89 @@ export default function EventDetailModal({ occurrence, onClose, onBack }: EventD
             {onBack ? <ArrowLeft size={35} /> : <X size={35} />}
           </button>
 
-          {/* Imagen o tesela de tipo — object-contain: la imagen completa
-              siempre visible, sin recortar (letterbox sobre el fondo si
-              la proporción no encaja), igual criterio que el visor de
+          {/* Confirmación de borrado en dos pasos — mismo patrón que
               PinModal.tsx. */}
-          <div className="relative w-full aspect-video bg-zinc-900 rounded-xl overflow-hidden border border-white/10 shrink-0">
-            {occurrence.imageUrl ? (
-              <Image
-                src={occurrence.imageUrl}
-                alt={occurrence.title}
-                fill
-                sizes="(max-width: 768px) 100vw, 42rem"
-                className="object-contain"
-                priority
-                unoptimized
-              />
+          {deleteStep !== null && (
+            <div
+              className="fixed inset-0 z-20 flex items-center justify-center bg-black/60"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-zinc-900 border border-white/15 rounded-2xl p-6 w-80 flex flex-col gap-5 shadow-2xl mx-4">
+                <p className="text-white font-semibold">
+                  {deleteStep === "confirm1"
+                    ? "¿Eliminar este evento?"
+                    : "Esta acción no se puede deshacer."}
+                </p>
+                {deleteStep === "confirm2" && (
+                  <p className="text-white/50 text-sm -mt-2">
+                    Se borrarán también sus precios y fotos asociadas.
+                  </p>
+                )}
+                {deleteError && <p className="text-red-400 text-sm">{deleteError}</p>}
+                <div className="flex gap-3">
+                  {deleteStep === "confirm1" ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteStep("confirm2")}
+                        className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition-colors cursor-pointer"
+                      >
+                        Sí, eliminar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteStep(null)}
+                        className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-colors cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteStep(null)}
+                        disabled={isDeletePending}
+                        className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={isDeletePending}
+                        className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {isDeletePending ? "Eliminando…" : "Confirmar"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Imagen o tesela de tipo: si hay foto, se muestra a tamaño
+              intrínseco (limitada por ancho Y alto, lo que llegue antes)
+              en vez de forzar un aspect-ratio panorámico fijo — así una
+              foto vertical no queda aplastada en una caja horizontal.
+              Editar/eliminar van anclados a la esquina superior derecha
+              de la IMAGEN, no del modal. */}
+          <div className="w-full flex justify-center shrink-0">
+            {activePhotoUrl ? (
+              <div className="relative inline-block max-w-full">
+                {/* eslint-disable-next-line @next/next/no-img-element -- tamaño intrínseco: next/image "fill" exige un contenedor con tamaño ya fijado, justo lo contrario de lo que hace falta aquí. */}
+                <img
+                  src={activePhotoUrl}
+                  alt={occurrence.title}
+                  className="max-w-full max-h-[42rem] w-auto h-auto rounded-xl border border-white/10 object-contain bg-zinc-900"
+                />
+                {editDeleteButtons}
+              </div>
             ) : (
-              <div className={`flex h-full w-full items-center justify-center gap-3 ${classes.dot}`}>
+              <div
+                className={`relative w-full aspect-video bg-zinc-900 rounded-xl overflow-hidden border border-white/10 flex items-center justify-center gap-3 ${classes.dot}`}
+              >
                 <div className="relative h-16 w-16 shrink-0">
                   <Image
                     src={occurrence.eventType.icon_path}
@@ -155,9 +328,33 @@ export default function EventDetailModal({ occurrence, onClose, onBack }: EventD
                     unoptimized
                   />
                 </div>
+                {editDeleteButtons}
               </div>
             )}
           </div>
+
+          {/* Carrusel de miniaturas: solo con más de una foto (portada +
+              extra) — mismo tratamiento visual que el carrusel de
+              PinModal.tsx. */}
+          {allPhotos.length > 1 && (
+            <div className="flex flex-wrap gap-2 scrollbar-clean pb-1">
+              {allPhotos.map((photoUrl, idx) => (
+                <button
+                  key={`${photoUrl}-${idx}`}
+                  type="button"
+                  onClick={() => setActivePhotoIdx(idx)}
+                  aria-label={`Ver foto ${idx + 1}`}
+                  className={`relative shrink-0 w-15 h-10 rounded-lg overflow-hidden border-2 transition-all cursor-pointer bg-zinc-900 ${
+                    idx === activePhotoIdx
+                      ? "border-amber-300"
+                      : "border-white/10 hover:border-white/30"
+                  }`}
+                >
+                  <Image src={photoUrl} alt="" fill sizes="80px" className="object-cover" unoptimized />
+                </button>
+              ))}
+            </div>
+          )}
 
           <h1 id="event-detail-title" {...titleProps} className="text-4xl font-bold text-white">
             {occurrence.title}

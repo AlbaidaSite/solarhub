@@ -2,7 +2,7 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUserActionClient } from "@/lib/supabase/actionAuth";
-import { getStorageUrl } from "@/lib/supabase/storage";
+import { getStorageUrl, STORAGE_BUCKET } from "@/lib/supabase/storage";
 import {
   toEventOccurrence,
   type EventOccurrence,
@@ -71,6 +71,24 @@ export async function getEventPricesAction(eventId: number): Promise<EventPrice[
 
   if (error || !data) return [];
   return data;
+}
+
+// ─── Fotos extra del evento (bajo demanda, carrusel del modal de detalle) ────
+// La portada ya viaja resuelta en EventOccurrence.imageUrl (events_in_range);
+// esto trae solo las fotos adicionales (event_photo), igual criterio que
+// getEventPricesAction: nada de esto va en el payload de la rejilla.
+
+export async function getEventExtraPhotosAction(eventId: number): Promise<string[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("event_photo")
+    .select("path")
+    .eq("event_id", eventId)
+    .order("id")
+    .returns<Array<{ path: string }>>();
+
+  if (error || !data) return [];
+  return data.map((row) => getStorageUrl(row.path));
 }
 
 // ─── Tipos de evento (selector del formulario de alta) ───────────────────────
@@ -201,27 +219,57 @@ export async function createEventAction(data: CreateEventData): Promise<CreateEv
   return { ok: true, eventId };
 }
 
-// ─── Fotos del evento ────────────────────────────────────────────────────────
-// La 1ª foto sube a event.image_url (portada, ya consumida por
-// events_in_range/EventImageLayer); el resto (máx. 2 más) va a event_photo.
+// ─── Auth: ¿puede el usuario actual editar/borrar este evento? ──────────────
+// Se distingue dueño de staff (no solo un booleano combinado) porque la UI
+// necesita saberlo: un staff editando/borrando el evento de otro usuario
+// muestra los botones en rojo para evitar confusiones (ver EventDetailModal).
 
-async function canEditEvent(
+export interface EventEditPermission {
+  isOwner: boolean;
+  isStaff: boolean;
+}
+
+async function getEventEditPermission(
   supabase: ServerClient,
   eventId: number,
   userId: string,
-): Promise<boolean> {
+): Promise<EventEditPermission> {
   const { data: event } = await supabase
     .from("event")
     .select("user_id")
     .eq("id", eventId)
     .maybeSingle<{ user_id: string }>();
 
-  if (!event) return false;
-  if (event.user_id === userId) return true;
+  if (!event) return { isOwner: false, isStaff: false };
 
-  const { data: isStaff } = await supabase.rpc("is_staff");
-  return Boolean(isStaff);
+  const { data: isStaffData } = await supabase.rpc("is_staff");
+  return { isOwner: event.user_id === userId, isStaff: Boolean(isStaffData) };
 }
+
+async function canEditEvent(
+  supabase: ServerClient,
+  eventId: number,
+  userId: string,
+): Promise<boolean> {
+  const { isOwner, isStaff } = await getEventEditPermission(supabase, eventId, userId);
+  return isOwner || isStaff;
+}
+
+export async function checkEventEditPermissionAction(
+  eventId: number,
+): Promise<EventEditPermission> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return { isOwner: false, isStaff: false };
+  return getEventEditPermission(auth.supabase, eventId, auth.userId);
+}
+
+// ─── Fotos del evento ────────────────────────────────────────────────────────
+// La 1ª foto sube a event.image_url (portada, ya consumida por
+// events_in_range/EventImageLayer); el resto (máx. 2 más) va a event_photo.
+// Solo se asigna portada si el evento todavía no tiene una — en alta
+// siempre es así (evento recién insertado), y en edición evita
+// sobrescribir la portada existente cuando el usuario solo añade fotos
+// extra.
 
 export async function addEventPhotosAction(
   eventId: number,
@@ -236,13 +284,22 @@ export async function addEventPhotosAction(
 
   if (paths.length === 0) return { ok: true };
 
-  const [coverPath, ...extraPaths] = paths;
-
-  const { error: updateError } = await supabase
+  const { data: current } = await supabase
     .from("event")
-    .update({ image_url: coverPath })
-    .eq("id", eventId);
-  if (updateError) return { ok: false, error: updateError.message };
+    .select("image_url")
+    .eq("id", eventId)
+    .maybeSingle<{ image_url: string | null }>();
+
+  let extraPaths = paths;
+  if (!current?.image_url) {
+    const [coverPath, ...rest] = paths;
+    const { error: updateError } = await supabase
+      .from("event")
+      .update({ image_url: coverPath })
+      .eq("id", eventId);
+    if (updateError) return { ok: false, error: updateError.message };
+    extraPaths = rest;
+  }
 
   if (extraPaths.length > 0) {
     const { error: insertError } = await supabase
@@ -251,5 +308,214 @@ export async function addEventPhotosAction(
     if (insertError) return { ok: false, error: insertError.message };
   }
 
+  return { ok: true };
+}
+
+export async function deleteEventPhotoAction(
+  photoId: number,
+  eventId: number,
+): Promise<EventActionResult> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase, userId } = auth;
+
+  const allowed = await canEditEvent(supabase, eventId, userId);
+  if (!allowed) return { ok: false, error: "Sin permiso." };
+
+  const { data: photo } = await supabase
+    .from("event_photo")
+    .select("path")
+    .eq("id", photoId)
+    .eq("event_id", eventId)
+    .maybeSingle<{ path: string }>();
+
+  if (!photo) return { ok: false, error: "Foto no encontrada." };
+
+  await supabase.storage.from(STORAGE_BUCKET).remove([photo.path]);
+
+  const { error } = await supabase.from("event_photo").delete().eq("id", photoId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+// ─── Edición de evento ───────────────────────────────────────────────────────
+
+export interface EventPhoto {
+  id: number;
+  path: string;
+  url: string;
+}
+
+export interface EventEditDetail {
+  id: number;
+  title: string;
+  place: string | null;
+  eventTypeId: number;
+  eventDate: string;
+  startTimeIncluded: boolean;
+  endDate: string | null;
+  endTimeIncluded: boolean;
+  description: string | null;
+  url: string | null;
+  recurrence: "NONE" | "YEARLY";
+  includesCromo: boolean;
+  hideExternal: boolean;
+  imageUrl: string | null;
+  prices: EventPrice[];
+  photos: EventPhoto[];
+}
+
+interface EventEditRow {
+  id: number;
+  title: string;
+  place: string | null;
+  event_type_id: number;
+  event_date: string;
+  start_time_included: boolean;
+  end_date: string | null;
+  end_time_included: boolean;
+  description: string | null;
+  url: string | null;
+  recurrence: "NONE" | "YEARLY";
+  includes_cromo: boolean;
+  hide_external: boolean;
+  image_url: string | null;
+}
+
+export async function getEventForEditAction(eventId: number): Promise<EventEditDetail | null> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: event, error } = await supabase
+    .from("event")
+    .select(
+      "id, title, place, event_type_id, event_date, start_time_included, end_date, end_time_included, description, url, recurrence, includes_cromo, hide_external, image_url",
+    )
+    .eq("id", eventId)
+    .maybeSingle<EventEditRow>();
+
+  if (error || !event) return null;
+
+  const [pricesRes, photosRes] = await Promise.all([
+    supabase
+      .from("event_price")
+      .select("id, reason, price")
+      .eq("event_id", eventId)
+      .order("id")
+      .returns<EventPrice[]>(),
+    supabase
+      .from("event_photo")
+      .select("id, path")
+      .eq("event_id", eventId)
+      .order("id")
+      .returns<Array<{ id: number; path: string }>>(),
+  ]);
+
+  return {
+    id: event.id,
+    title: event.title,
+    place: event.place,
+    eventTypeId: event.event_type_id,
+    eventDate: event.event_date,
+    startTimeIncluded: event.start_time_included,
+    endDate: event.end_date,
+    endTimeIncluded: event.end_time_included,
+    description: event.description,
+    url: event.url,
+    recurrence: event.recurrence,
+    includesCromo: event.includes_cromo,
+    hideExternal: event.hide_external,
+    imageUrl: event.image_url ? getStorageUrl(event.image_url) : null,
+    prices: pricesRes.data ?? [],
+    photos: (photosRes.data ?? []).map((p) => ({ id: p.id, path: p.path, url: getStorageUrl(p.path) })),
+  };
+}
+
+export type UpdateEventData = CreateEventData;
+
+export async function updateEventAction(
+  eventId: number,
+  data: UpdateEventData,
+): Promise<EventActionResult> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase, userId } = auth;
+
+  const allowed = await canEditEvent(supabase, eventId, userId);
+  if (!allowed) return { ok: false, error: "Sin permiso para editar este evento." };
+
+  const validationError = validateEventPayload(data);
+  if (validationError) return { ok: false, error: validationError };
+
+  const { error: updateError } = await supabase
+    .from("event")
+    .update({
+      event_type_id: data.eventTypeId,
+      title: data.title.trim(),
+      description: data.description?.trim() || null,
+      event_date: data.eventDate,
+      end_date: data.endDate,
+      start_time_included: data.startTimeIncluded,
+      end_time_included: data.endTimeIncluded,
+      place: data.place?.trim() || null,
+      url: data.url?.trim() || null,
+      recurrence: data.recurrence,
+      includes_cromo: data.includesCromo,
+      hide_external: data.hideExternal,
+    })
+    .eq("id", eventId);
+
+  if (updateError) return { ok: false, error: updateError.message };
+
+  // Reemplaza los precios en bloque (borra + inserta) en vez de diffear
+  // filas: más simple y evita arrastrar ids de precios ya eliminados en
+  // el formulario.
+  const { error: deletePricesError } = await supabase
+    .from("event_price")
+    .delete()
+    .eq("event_id", eventId);
+  if (deletePricesError) return { ok: false, error: deletePricesError.message };
+
+  const pricesToInsert = data.prices.filter((p) => Number.isFinite(p.price));
+  if (pricesToInsert.length > 0) {
+    const { error: priceError } = await supabase.from("event_price").insert(
+      pricesToInsert.map((p) => ({
+        event_id: eventId,
+        reason: p.reason?.trim() || null,
+        price: p.price,
+      })),
+    );
+    if (priceError) return { ok: false, error: priceError.message };
+  }
+
+  return { ok: true };
+}
+
+export async function deleteEventAction(eventId: number): Promise<EventActionResult> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase, userId } = auth;
+
+  const allowed = await canEditEvent(supabase, eventId, userId);
+  if (!allowed) return { ok: false, error: "Sin permiso para eliminar este evento." };
+
+  // Recolectamos las rutas de storage (portada + fotos extra) antes de
+  // borrar las filas — event_price/event_photo caen solos por
+  // "on delete cascade", pero los objetos de storage no.
+  const [eventRes, photosRes] = await Promise.all([
+    supabase.from("event").select("image_url").eq("id", eventId).maybeSingle<{ image_url: string | null }>(),
+    supabase.from("event_photo").select("path").eq("event_id", eventId).returns<Array<{ path: string }>>(),
+  ]);
+
+  const storagePaths = [
+    ...(eventRes.data?.image_url ? [eventRes.data.image_url] : []),
+    ...(photosRes.data ?? []).map((p) => p.path),
+  ];
+
+  if (storagePaths.length > 0) {
+    await supabase.storage.from(STORAGE_BUCKET).remove(storagePaths);
+  }
+
+  const { error } = await supabase.from("event").delete().eq("id", eventId);
+  if (error) return { ok: false, error: error.message };
   return { ok: true };
 }

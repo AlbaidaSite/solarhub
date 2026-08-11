@@ -314,6 +314,31 @@ function EventsCalendarInner({
     router.push(dateKey ? `/eventos/nueva?date=${dateKey}` : "/eventos/nueva");
   }
 
+  // Quita el evento borrado de TODOS los meses cacheados (no solo el
+  // visible): un evento YEARLY aparece una vez por año bajo el mismo id,
+  // y monthCache puede tener varios de esos años cargados a la vez.
+  function handleEventDeleted(eventId: number, dateKey: string) {
+    setModal({ view: "closed" });
+    setMonthCache((prev) => {
+      const next = new Map<string, EventOccurrence[]>();
+      for (const [key, occurrences] of prev) {
+        next.set(key, occurrences.filter((o) => o.id !== eventId));
+      }
+      return next;
+    });
+    // Si el evento borrado era el fijado (sticky) en esa celda, se limpia
+    // la entrada — más simple que buscar otro evento del mismo día para
+    // fijarlo a mano, y el resultado es el mismo: CalendarCell cae de
+    // vuelta a getDefaultOccurrence (el primero), como si nunca se
+    // hubiera fijado ninguno.
+    setStickyImageByDate((prev) => {
+      if (prev.get(dateKey) !== eventId) return prev;
+      const next = new Map(prev);
+      next.delete(dateKey);
+      return next;
+    });
+  }
+
   const { calendarProps, prevButtonProps, nextButtonProps, title } = useCalendar(
     { "aria-label": "Calendario de eventos" },
     state,
@@ -423,6 +448,7 @@ function EventsCalendarInner({
                   ? () => setModal({ view: "list", dateKey: listDateKey })
                   : undefined
               }
+              onDelete={() => handleEventDeleted(occurrence.id, occurrence.occurrenceDate)}
             />
           );
         })()}
