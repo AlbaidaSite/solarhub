@@ -96,6 +96,7 @@ export interface TestUserOpts {
   isStaff?: boolean;
   isSuperuser?: boolean;
   isLoukou?: boolean;
+  isGardenManager?: boolean;
 }
 
 export interface TestUser {
@@ -113,6 +114,9 @@ const trackedCromos = new Set<number>();
 const trackedLabels = new Set<number>();
 const trackedEvents = new Set<number>();
 const trackedEventTypes = new Set<number>();
+const trackedPlants = new Set<number>();
+const trackedGardenBeds = new Set<number>();
+const trackedPlantBeds = new Set<number>();
 
 export async function createTestUser(opts: TestUserOpts = {}): Promise<TestUser> {
   const admin = createAdminClient();
@@ -148,6 +152,7 @@ export async function createTestUser(opts: TestUserOpts = {}): Promise<TestUser>
       is_staff: opts.isStaff ?? false,
       is_superuser: opts.isSuperuser ?? false,
       is_loukou: opts.isLoukou ?? false,
+      is_garden_manager: opts.isGardenManager ?? false,
     })
     .eq("user_id", uid);
   if (cErr) throw new Error(`update credentials failed: ${cErr.message}`);
@@ -354,6 +359,96 @@ export async function createTestEvent(opts: TestEventOpts): Promise<TestEvent> {
   return { id: data.id as number };
 }
 
+// ─── Huerto: plant / garden_bed / plant_bed ──────────────────────────────────
+
+export interface TestPlantOpts {
+  name?: string;
+  iconPath?: string;
+  monthsOfGrowth?: number[] | null;
+  monthsOfHarvest?: number[] | null;
+}
+
+export interface TestPlant {
+  id: number;
+}
+
+export async function createTestPlant(opts: TestPlantOpts = {}): Promise<TestPlant> {
+  const admin = createAdminClient();
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const { data, error } = await admin
+    .from("plant")
+    .insert({
+      name: opts.name ?? `planta-${SUITE_TAG}-${suffix}`,
+      icon_path: opts.iconPath ?? "huerto/test.webp",
+      months_of_growth: opts.monthsOfGrowth ?? null,
+      months_of_harvest: opts.monthsOfHarvest ?? null,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`create plant failed: ${error?.message}`);
+  trackedPlants.add(data.id as number);
+  return { id: data.id as number };
+}
+
+export interface TestGardenBedOpts {
+  name?: string;
+  width?: number;
+  height?: number;
+  posX?: number;
+  posY?: number;
+}
+
+export interface TestGardenBed {
+  id: number;
+}
+
+export async function createTestGardenBed(opts: TestGardenBedOpts = {}): Promise<TestGardenBed> {
+  const admin = createAdminClient();
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const { data, error } = await admin
+    .from("garden_bed")
+    .insert({
+      name: opts.name ?? `bancal-${SUITE_TAG}-${suffix}`,
+      width: opts.width ?? 10,
+      height: opts.height ?? 10,
+      pos_x: opts.posX ?? 0,
+      pos_y: opts.posY ?? 0,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`create garden_bed failed: ${error?.message}`);
+  trackedGardenBeds.add(data.id as number);
+  return { id: data.id as number };
+}
+
+export interface TestPlantBedOpts {
+  gardenBedId: number;
+  plantId?: number | null;
+  description?: string | null;
+  isFuture?: boolean;
+}
+
+export interface TestPlantBed {
+  id: number;
+}
+
+export async function createTestPlantBed(opts: TestPlantBedOpts): Promise<TestPlantBed> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("plant_bed")
+    .insert({
+      garden_bed_id: opts.gardenBedId,
+      plant_id: opts.plantId ?? null,
+      description: opts.description ?? null,
+      is_future: opts.isFuture ?? false,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`create plant_bed failed: ${error?.message}`);
+  trackedPlantBeds.add(data.id as number);
+  return { id: data.id as number };
+}
+
 // ─── Cleanup ─────────────────────────────────────────────────────────────────
 
 afterEach(async () => {
@@ -381,6 +476,20 @@ afterEach(async () => {
   if (trackedEventTypes.size > 0) {
     await admin.from("event_type").delete().in("id", [...trackedEventTypes]);
     trackedEventTypes.clear();
+  }
+  // plant_bed primero (aunque garden_bed ya lo arrastraría en cascada):
+  // así el orden no depende de qué se trackeó en cada test.
+  if (trackedPlantBeds.size > 0) {
+    await admin.from("plant_bed").delete().in("id", [...trackedPlantBeds]);
+    trackedPlantBeds.clear();
+  }
+  if (trackedGardenBeds.size > 0) {
+    await admin.from("garden_bed").delete().in("id", [...trackedGardenBeds]);
+    trackedGardenBeds.clear();
+  }
+  if (trackedPlants.size > 0) {
+    await admin.from("plant").delete().in("id", [...trackedPlants]);
+    trackedPlants.clear();
   }
   // Trades (cualquiera donde participen usuarios trackeados) — los
   // borramos antes que los usuarios porque trade.initiator_id REFERENCES profile.
