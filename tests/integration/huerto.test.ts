@@ -53,6 +53,27 @@ describe("getGardenDataAction", () => {
     expect(result.plantBeds).toEqual([plantBedRow]);
   });
 
+  it("normaliza months_of_growth/harvest a number[] aunque lleguen como strings", async () => {
+    const stringMonthsRow = {
+      ...plantRow,
+      months_of_growth: ["10", "11"],
+      months_of_harvest: ["5", "6"],
+    };
+    const stub = createSupabaseStub({
+      from: {
+        plant: { data: [stringMonthsRow], error: null },
+        garden_bed: { data: [bedRow], error: null },
+        plant_bed: { data: [plantBedRow], error: null },
+      },
+    });
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(stub.client as never);
+
+    const result = await getGardenDataAction();
+
+    expect(result.plants[0].months_of_growth).toEqual([10, 11]);
+    expect(result.plants[0].months_of_harvest).toEqual([5, 6]);
+  });
+
   it("un error en cualquier tabla devuelve arrays vacíos en vez de lanzar", async () => {
     const stub = createSupabaseStub({
       from: {

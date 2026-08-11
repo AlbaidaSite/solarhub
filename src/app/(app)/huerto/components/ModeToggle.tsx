@@ -16,7 +16,7 @@ export default function ModeToggle({ mode, onChange }: ModeToggleProps) {
       <ToggleButton active={mode === "actual"} onClick={() => onChange("actual")}>
         Actual
       </ToggleButton>
-      <span aria-hidden className="text-zinc-600 text-xl">
+      <span aria-hidden className="text-zinc-600 text-2xl">
         /
       </span>
       <ToggleButton active={mode === "planificada"} onClick={() => onChange("planificada")}>
@@ -40,7 +40,7 @@ function ToggleButton({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`text-xl font-bold transition-colors ${
+      className={`text-2xl font-bold transition-colors ${
         active ? "text-white" : "text-white/40 hover:text-white/70"
       }`}
     >

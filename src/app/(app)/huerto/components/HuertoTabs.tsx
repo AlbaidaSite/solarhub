@@ -38,7 +38,7 @@ export default function HuertoTabs({ tab, onChange }: HuertoTabsProps) {
   const { tabListProps } = useTabList({ "aria-label": "Vista de huerto" }, state, ref);
 
   return (
-    <div {...tabListProps} ref={ref} className="md:hidden flex items-center justify-center gap-10">
+    <div {...tabListProps} ref={ref} className="md:hidden flex items-center justify-center gap-14">
       {[...state.collection].map((item) => (
         <TabButton key={item.key} item={item} state={state} />
       ))}
@@ -60,17 +60,17 @@ function TabButton({ item, state }: { item: Node<object>; state: TabListState<ob
       id={tabId}
       aria-controls={panelId}
       ref={ref}
-      className="flex flex-col items-center gap-1 pb-1"
+      className="flex flex-col items-center gap-2 pb-1"
     >
       {/* El icono activo no se distingue solo por brillo: además lleva
           un borde inferior, para que se lea a pleno sol o con baja
           visión. */}
       <Icon
-        size={24}
+        size={40}
         className={isSelected ? "text-white" : "text-white/40"}
       />
       <span
-        className={`text-xs border-b-2 ${
+        className={`text-base font-medium border-b-2 ${
           isSelected ? "text-white border-cyan-400" : "text-white/40 border-transparent"
         }`}
       >

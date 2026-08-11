@@ -15,9 +15,9 @@ export default function PlantRow({ plant, onSelect }: PlantRowProps) {
       onClick={() => onSelect?.(plant.id)}
       title={plant.name}
       aria-label={plant.name}
-      className="relative w-10 h-10 shrink-0"
+      className="relative w-14 h-14 shrink-0"
     >
-      <Image src={plant.icon_path} alt={plant.name} fill sizes="40px" className="object-contain" />
+      <Image src={plant.icon_path} alt={plant.name} fill sizes="56px" className="object-contain" />
     </button>
   );
 }

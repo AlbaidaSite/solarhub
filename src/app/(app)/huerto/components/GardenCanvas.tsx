@@ -2,7 +2,7 @@
 
 import { useId } from "react";
 import BedShape from "./BedShape";
-import { CANVAS_VIEWBOX, GARDEN_CANVAS } from "../lib/canvas";
+import { BED_STROKE_WIDTH, CANVAS_VIEWBOX, GARDEN_CANVAS } from "../lib/canvas";
 import type { GardenBed, GardenMode, Plant, PlantBed } from "@/types/garden";
 
 interface GardenCanvasProps {
@@ -29,33 +29,44 @@ export default function GardenCanvas({ beds, distribution, plantsById, mode }: G
   const modeLabel = mode === "actual" ? "actual" : "planificada";
 
   return (
-    <div>
-      <svg
-        viewBox={CANVAS_VIEWBOX}
-        preserveAspectRatio="xMidYMid meet"
-        role="img"
-        aria-labelledby={titleId}
-        className="w-full h-auto max-h-full text-zinc-600"
-      >
-        <title id={titleId}>{`Distribución ${modeLabel} del huerto`}</title>
-        <rect
-          x={0}
-          y={0}
-          width={GARDEN_CANVAS.width}
-          height={GARDEN_CANVAS.height}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={0.5}
-        />
-        {beds.map((bed) => (
-          <BedShape
-            key={bed.id}
-            bed={bed}
-            rows={sortRows(distribution.get(bed.id) ?? [], plantsById)}
-            plantsById={plantsById}
+    <div className="w-full h-full">
+      <div className="w-full h-full flex items-center justify-center">
+        <svg
+          viewBox={CANVAS_VIEWBOX}
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-labelledby={titleId}
+          // El contenedor (ver HuertoView) ya tiene un alto acotado por
+          // el layout real -- navbar, ModeToggle, pestañas, márgenes --
+          // así que basta con max-width/max-height al 100% de ese
+          // hueco: el <svg> es un elemento reemplazado (como <img>) y
+          // encoge/crece manteniendo su proporción real (viewBox) hasta
+          // ese límite, sin necesidad de calcular nada a mano. min-height
+          // impone el suelo de 400px, que gana si el hueco es menor.
+          style={{ minHeight: 400 }}
+          className="block max-w-full max-h-full text-white"
+        >
+          <title id={titleId}>{`Distribución ${modeLabel} del huerto`}</title>
+          <rect
+            x={0}
+            y={0}
+            width={GARDEN_CANVAS.width}
+            height={GARDEN_CANVAS.height}
+            rx={6}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={BED_STROKE_WIDTH}
           />
-        ))}
-      </svg>
+          {beds.map((bed) => (
+            <BedShape
+              key={bed.id}
+              bed={bed}
+              rows={sortRows(distribution.get(bed.id) ?? [], plantsById)}
+              plantsById={plantsById}
+            />
+          ))}
+        </svg>
+      </div>
 
       <ul className="sr-only">
         {beds.map((bed) => {

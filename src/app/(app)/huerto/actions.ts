@@ -4,6 +4,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStorageUrl } from "@/lib/supabase/storage";
 import type { GardenBed, Plant, PlantBed } from "@/types/garden";
 
+function normalizeMonths(months: number[] | null): number[] | null {
+  if (months == null) return null;
+  return months.map(Number);
+}
+
 export interface GardenData {
   plants: Plant[];
   beds: GardenBed[];
@@ -35,13 +40,33 @@ export async function getGardenDataAction(): Promise<GardenData> {
       .returns<PlantBed[]>(),
   ]);
 
-  if (plantsRes.error) console.error("Error loading plant:", plantsRes.error);
-  if (bedsRes.error) console.error("Error loading garden_bed:", bedsRes.error);
-  if (plantBedsRes.error) console.error("Error loading plant_bed:", plantBedsRes.error);
+  // Next.js reenvía console.error de Server Components al navegador
+  // serializando el objeto; un PostgrestError pasado tal cual acaba
+  // mostrando "{}" ahí aunque en el terminal del servidor sí se vea
+  // completo. Se loguean los campos explícitos para que el mensaje sea
+  // legible en ambos sitios.
+  if (plantsRes.error) {
+    const e = plantsRes.error;
+    console.error(`Error loading plant: ${e.message} (code=${e.code}, details=${e.details}, hint=${e.hint})`);
+  }
+  if (bedsRes.error) {
+    const e = bedsRes.error;
+    console.error(`Error loading garden_bed: ${e.message} (code=${e.code}, details=${e.details}, hint=${e.hint})`);
+  }
+  if (plantBedsRes.error) {
+    const e = plantBedsRes.error;
+    console.error(`Error loading plant_bed: ${e.message} (code=${e.code}, details=${e.details}, hint=${e.hint})`);
+  }
 
   const plants = (plantsRes.data ?? []).map((p) => ({
     ...p,
     icon_path: getStorageUrl(p.icon_path),
+    // PostgREST puede devolver smallint[] con elementos ya numéricos,
+    // pero se normaliza aquí (frontera con el exterior) para que
+    // monthGroups pueda comparar con Array.includes(m) sin que un
+    // desajuste string/number ("1" !== 1) mande todo a "Otros".
+    months_of_growth: normalizeMonths(p.months_of_growth),
+    months_of_harvest: normalizeMonths(p.months_of_harvest),
   }));
 
   return {

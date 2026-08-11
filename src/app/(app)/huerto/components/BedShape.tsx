@@ -1,8 +1,11 @@
 import { subcellsFor } from "../lib/subcells";
+import { BED_STROKE_WIDTH } from "../lib/canvas";
 import type { GardenBed, Plant, PlantBed } from "@/types/garden";
 
-const BED_MARGIN = 0.3;
-const ICON_MARGIN = 0.6;
+// En unidades de lienzo (ver GARDEN_CANVAS): con bancales reales de
+// 60-320 unidades de lado, un margen de 0.3 quedaría invisible.
+const BED_MARGIN = 1.5;
+const ICON_MARGIN = 3;
 
 interface BedShapeProps {
   bed: GardenBed;
@@ -22,9 +25,10 @@ export default function BedShape({ bed, rows, plantsById }: BedShapeProps) {
         y={bed.pos_y}
         width={bed.width}
         height={bed.height}
+        rx={6}
         fill="none"
         stroke="currentColor"
-        strokeWidth={0.5}
+        strokeWidth={BED_STROKE_WIDTH}
         vectorEffect="non-scaling-stroke"
       />
       {rows.map((pb, i) => {
@@ -44,9 +48,10 @@ export default function BedShape({ bed, rows, plantsById }: BedShapeProps) {
               y={cellY}
               width={cellWidth}
               height={cellHeight}
+              rx={3}
               fill="none"
               stroke="currentColor"
-              strokeWidth={0.3}
+              strokeWidth={1.5}
               vectorEffect="non-scaling-stroke"
             />
             {plant && (

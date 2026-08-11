@@ -109,8 +109,13 @@ CREATE TABLE plant (
   icon_path text NOT NULL,
   seed_info text,
   harvest_info text,
-  months_of_growth text[],
-  months_of_harvest text[]
+  -- Corregido a escalar: así es como quedó realmente esta migración
+  -- aplicada en producción (divergió de este archivo en algún punto).
+  -- 20260811140200_plant_month_vocabulary.sql asume este tipo al migrar
+  -- a smallint[]; si aquí siguiera diciendo text[], un reset local
+  -- partiría de un esquema que esa migración no sabe leer.
+  months_of_growth text,
+  months_of_harvest text
 );
 
 CREATE TABLE artist (
