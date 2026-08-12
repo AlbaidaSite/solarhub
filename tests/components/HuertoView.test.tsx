@@ -3,7 +3,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("next/image", () => ({
@@ -14,24 +14,46 @@ vi.mock("next/image", () => ({
   },
 }));
 
+// HuertoView pregunta al servidor si el usuario puede editar el huerto en
+// cuanto monta. Por defecto se responde que no: es el caso de la mayoría
+// de usuarios y deja la vista igual que antes de esta funcionalidad.
+const getGardenPermissionAction = vi.fn(async () => ({ canManage: false }));
+
+vi.mock("@/app/(app)/huerto/actions", () => ({
+  getGardenPermissionAction: () => getGardenPermissionAction(),
+  addPlantBedAction: vi.fn(),
+  updatePlantBedAction: vi.fn(),
+  deletePlantBedAction: vi.fn(),
+  reorderPlantBedsAction: vi.fn(),
+}));
+
 import HuertoView from "@/app/(app)/huerto/components/HuertoView";
 import { HUERTO_TAB_IDS } from "@/app/(app)/huerto/components/HuertoTabs";
 import type { GardenBed, Plant, PlantBed } from "@/types/garden";
 
-const beds: GardenBed[] = [{ id: 1, name: "Bancal", width: 10, height: 10, pos_x: 0, pos_y: 0 }];
+const beds: GardenBed[] = [{ id: 1, name: "Bancal", width: 100, height: 100, pos_x: 0, pos_y: 0 }];
 
 const plants: Plant[] = [
-  { id: 1, name: "Ajo", icon_path: "ajo.webp", seed_info: null, harvest_info: null, months_of_growth: [1], months_of_harvest: null },
-  { id: 2, name: "Sandía", icon_path: "sandia.webp", seed_info: null, harvest_info: null, months_of_growth: [6], months_of_harvest: null },
+  { id: 1, name: "Ajo", icon_path: "ajo.webp", seed_info: null, harvest_info: null, months_of_growth: [1], months_of_harvest: null, color: "lime-600" },
+  { id: 2, name: "Sandía", icon_path: "sandia.webp", seed_info: null, harvest_info: null, months_of_growth: [6], months_of_harvest: null, color: "rose-700" },
 ];
 
 const plantBeds: PlantBed[] = [
-  { id: 1, plant_id: 1, garden_bed_id: 1, description: null, is_future: false },
-  { id: 2, plant_id: 2, garden_bed_id: 1, description: null, is_future: true },
+  { id: 1, plant_id: 1, garden_bed_id: 1, description: null, is_future: false, order_number: 0 },
+  { id: 2, plant_id: 2, garden_bed_id: 1, description: null, is_future: true, order_number: 0 },
 ];
 
 beforeEach(() => {
   cleanup();
+  getGardenPermissionAction.mockResolvedValue({ canManage: false });
+  // useIsMobile (arrastre solo en escritorio) consulta matchMedia, que
+  // jsdom no implementa. Se responde "no coincide" = escritorio.
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
 });
 
 describe("HuertoView", () => {
@@ -73,5 +95,34 @@ describe("HuertoView", () => {
     const bancalPanel = document.getElementById(HUERTO_TAB_IDS.bancalPanel);
     expect(cultivosPanel).toHaveClass("hidden");
     expect(bancalPanel).not.toHaveClass("hidden");
+  });
+
+  it("sin permiso de edición los bancales no son clicables", async () => {
+    const { container } = render(
+      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />,
+    );
+    await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
+    expect(container.querySelectorAll('g[role="button"]')).toHaveLength(0);
+  });
+
+  it("con permiso, pulsar un bancal abre su modal con los cultivos que tiene", async () => {
+    getGardenPermissionAction.mockResolvedValue({ canManage: true });
+    const user = userEvent.setup();
+    const { container } = render(
+      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />,
+    );
+
+    const bedButton = await waitFor(() => {
+      const found = container.querySelector('g[role="button"]');
+      expect(found).not.toBeNull();
+      return found as SVGGElement;
+    });
+
+    await user.click(bedButton);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Bancal" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /Añadir cultivo/ })).toBeInTheDocument();
+    expect(within(dialog).getByText("Ajo")).toBeInTheDocument();
   });
 });

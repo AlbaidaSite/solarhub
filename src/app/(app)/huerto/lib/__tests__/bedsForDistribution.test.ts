@@ -8,6 +8,7 @@ function pb(overrides: Partial<PlantBed> & { id: number }): PlantBed {
     garden_bed_id: 1,
     description: null,
     is_future: false,
+    order_number: 0,
     ...overrides,
   };
 }

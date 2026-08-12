@@ -86,6 +86,58 @@ describe.skipIf(!supabaseUp)(
       // que no está en el set trackeado (y ya se borró de todos modos).
     });
 
+    // El modal de bancal abre la edición de cultivos a staff además de a
+    // garden manager, y la política se amplió para acompañarlo (ver
+    // 20260812170100_plant_bed_write_staff.sql). Sin esto, un staff vería
+    // los botones y el guardado fallaría con un error de RLS.
+    it("staff sin is_garden_manager también puede escribir en plant_bed", async () => {
+      const plant = await createTestPlant();
+      const bed = await createTestGardenBed();
+      const staff = await createTestUser({ isStaff: true });
+      const staffClient = await createUserClient(staff.email, staff.password);
+
+      const { data: inserted, error: insertError } = await staffClient
+        .from("plant_bed")
+        .insert({ garden_bed_id: bed.id, plant_id: plant.id, is_future: false })
+        .select("id")
+        .single();
+      expect(insertError).toBeNull();
+
+      const { error: reorderError } = await staffClient
+        .from("plant_bed")
+        .update({ order_number: 1 })
+        .eq("id", inserted!.id);
+      expect(reorderError).toBeNull();
+
+      const { error: deleteError } = await staffClient
+        .from("plant_bed")
+        .delete()
+        .eq("id", inserted!.id);
+      expect(deleteError).toBeNull();
+    });
+
+    it("un usuario normal no puede escribir en plant_bed", async () => {
+      const plant = await createTestPlant();
+      const bed = await createTestGardenBed();
+      const user = await createTestUser();
+      const userClient = await createUserClient(user.email, user.password);
+
+      const { error } = await userClient
+        .from("plant_bed")
+        .insert({ garden_bed_id: bed.id, plant_id: plant.id, is_future: false });
+      expect(error).not.toBeNull();
+    });
+
+    it("order_number no admite negativos", async () => {
+      const admin = createAdminClient();
+      const bed = await createTestGardenBed();
+
+      const { error } = await admin
+        .from("plant_bed")
+        .insert({ garden_bed_id: bed.id, plant_id: null, is_future: false, order_number: -1 });
+      expect(error).not.toBeNull();
+    });
+
     it("borrar un garden_bed arrastra sus plant_bed (on delete cascade)", async () => {
       const admin = createAdminClient();
       const plant = await createTestPlant();

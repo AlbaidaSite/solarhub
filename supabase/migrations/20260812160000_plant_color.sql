@@ -1,0 +1,30 @@
+-- =====================================================================
+-- HUERTO: plant.color
+-- =====================================================================
+-- Cada planta lleva su propio color, con el MISMO contrato de formato que
+-- event_type.color (ver 20260808120300_event_type_color_format.sql): el
+-- valor es un nombre de clase Tailwind completo, matiz + tono
+-- (p.ej. "amber-400"), no un hex ni solo el matiz. Quien lo consuma
+-- compone las clases en tiempo de ejecución (`bg-${color}`,
+-- `border-${color}`...), como hace src/lib/eventTypeClasses.ts.
+--
+-- Nullable y sin default: una planta puede no tener color asignado
+-- todavía. Las filas de plant se rellenan a mano desde Supabase Studio
+-- (igual que event_type), así que el frontend debe tratar null como "sin
+-- color" y caer a un neutro, no asumir que siempre viene informado.
+--
+-- Sin CHECK en BD, por simetría con event_type.color: el formato
+-- (`^[a-z]+-\d{3}$`) se valida en frontend. Ojo, esa regex solo comprueba
+-- la FORMA: un matiz que no exista en Tailwind (p.ej. "olive-400", que
+-- suena a paleta pero no está en Tailwind) la pasa y no genera ninguna
+-- clase real.
+--
+-- Al rellenar valores hay que mantener sincronizado el `@source inline(...)`
+-- de src/styles/globals.css: Tailwind 4 escanea el fuente en build time, así
+-- que solo existen las combinaciones matiz×tono declaradas ahí. Hoy esa
+-- lista cubre `bg-*`, `border-*` y `bg-*/20` de la paleta completa; si
+-- plant.color acaba usándose con otro prefijo (`text-`, `fill-`, `ring-`,
+-- `stroke-`...), hay que añadirlo a esa lista o las clases no se generarán.
+-- =====================================================================
+
+alter table public.plant add column color text;

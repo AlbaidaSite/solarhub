@@ -18,8 +18,12 @@ interface UseConfirmDeleteReturn<Id extends number | string> {
 }
 
 // Hook que encapsula la máquina de estado del borrado en 2 pasos, idéntica
-// entre las listas admin (cromos, artistas, stickers…). El consumidor solo
-// invoca `openDelete(id)` y renderiza `dialog` al final de su JSX.
+// entre las listas admin (cromos, artistas, stickers…) y el modal de bancal
+// del huerto. El consumidor solo invoca `openDelete(id)` y renderiza `dialog`
+// al final de su JSX.
+//
+// Vive en components/ui y no bajo app/staff porque ya no es solo de staff: el
+// borrado en 2 pasos es el gesto estándar de toda la app.
 export function useConfirmDelete<Id extends number | string>({
   itemLabel,
   action,
