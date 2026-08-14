@@ -5,13 +5,13 @@ import { subcellsFor } from "../lib/subcells";
 import { BED_STROKE_WIDTH } from "../lib/canvas";
 import type { GardenBed, Plant, PlantBed } from "@/types/garden";
 
-// Grosor del contorno de un cultivo, en píxeles de pantalla: con
+// Grosor del contorno de un cultivo, en píxeles de PANTALLA: con
 // vectorEffect="non-scaling-stroke" el trazo no se reescala con el
-// viewBox, así que estos 3 son 3px reales a cualquier tamaño del lienzo.
+// viewBox, así que vale lo mismo a cualquier tamaño del lienzo.
 const CROP_STROKE_WIDTH = 4;
 
-// Cultivo ya plantado: relleno del color de la planta al 60%, contorno a
-// pleno color. La previsualización de arrastre baja ambas cosas para que
+// Cultivo ya plantado: contorno a pleno color y relleno del mismo color
+// translúcido. La previsualización de arrastre baja ambas cosas para que
 // se lea como "esto todavía no está", sin cambiar de color.
 const CROP_FILL_OPACITY = 0.25;
 const PREVIEW_FILL_OPACITY = 0.15;

@@ -121,7 +121,8 @@ describe("HuertoView", () => {
     await user.click(bedButton);
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "Bancal" })).toBeInTheDocument();
+    // Sin título visible, el bancal se identifica por el nombre accesible.
+    expect(dialog).toHaveAccessibleName("Bancal");
     expect(within(dialog).getByRole("button", { name: /Añadir cultivo/ })).toBeInTheDocument();
     expect(within(dialog).getByText("Ajo")).toBeInTheDocument();
   });

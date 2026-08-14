@@ -55,7 +55,7 @@ export default function BedModal({
 }: BedModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const { dialogProps, titleProps } = useDialog({}, dialogRef);
+  const { dialogProps } = useDialog({}, dialogRef);
 
   const [view, setView] = useState<View>({ kind: "list" });
   const [error, setError] = useState<string | null>(null);
@@ -207,6 +207,9 @@ export default function BedModal({
     });
   };
 
+  // El modal no lleva título visible, pero un diálogo sin nombre
+  // accesible se anuncia como "diálogo" a secas: el mismo texto que
+  // llevaría la cabecera va en aria-label.
   const title = view.kind === "form" ? (view.editing ? "Editar cultivo" : "Añadir cultivo") : bed.name;
 
   return (
@@ -220,7 +223,7 @@ export default function BedModal({
           ref={dialogRef}
           role="dialog"
           aria-modal="true"
-          aria-labelledby="bed-modal-title"
+          aria-label={title}
           className="min-h-full w-full max-w-lg mx-auto flex flex-col gap-4 px-6 pt-32 pb-8"
           onClick={(e) => e.stopPropagation()}
         >

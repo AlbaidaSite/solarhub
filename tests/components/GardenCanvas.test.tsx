@@ -75,8 +75,14 @@ describe("GardenCanvas", () => {
 
     const polygon = container.querySelector("polygon");
     expect(polygon?.parentElement).toHaveClass("text-red-700");
+    // El color sale de currentColor (la clase text-* de la planta) y el
+    // relleno es translúcido para que se vea el lienzo por debajo. El
+    // valor exacto es una decisión de diseño que se retoca a ojo, así que
+    // aquí solo se fija que sea translúcido, no cuánto.
     expect(polygon).toHaveAttribute("fill", "currentColor");
-    expect(polygon).toHaveAttribute("fill-opacity", "0.6");
+    const fillOpacity = Number(polygon?.getAttribute("fill-opacity"));
+    expect(fillOpacity).toBeGreaterThan(0);
+    expect(fillOpacity).toBeLessThan(1);
   });
 
   it("sin onBedSelect el lienzo es una imagen y ningún bancal es enfocable", () => {

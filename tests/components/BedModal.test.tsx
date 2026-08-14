@@ -78,13 +78,25 @@ beforeEach(() => {
 });
 
 describe("BedModal — listado", () => {
-  it("muestra el nombre del bancal, el botón de añadir y un cultivo por fila", () => {
+  it("muestra el botón de añadir y un cultivo por fila", () => {
     renderModal({ rows: [row({ id: 1 }), row({ id: 2, plant_id: 2, order_number: 1 })] });
 
-    expect(screen.getByRole("heading", { name: "Bancal ancho" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Añadir cultivo/ })).toBeEnabled();
     expect(screen.getByText("Tomate")).toBeInTheDocument();
     expect(screen.getByText("Lechuga")).toBeInTheDocument();
+  });
+
+  // El modal no tiene título visible, así que el nombre del bancal solo
+  // llega por el nombre accesible del diálogo: sin esto se anunciaría
+  // como "diálogo" a secas y no habría forma de saber qué bancal es.
+  it("el diálogo se llama como el bancal, y como la acción al abrir el formulario", async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    expect(screen.getByRole("dialog")).toHaveAccessibleName("Bancal ancho");
+
+    await user.click(screen.getByRole("button", { name: /Añadir cultivo/ }));
+    expect(screen.getByRole("dialog")).toHaveAccessibleName("Añadir cultivo");
   });
 
   it("el tipo se muestra bajo el nombre del cultivo", () => {
