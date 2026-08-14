@@ -16,9 +16,18 @@ interface CropPanelProps {
   month: number;
   onMonthChange: (month: number) => void;
   onPlantSelect?: (plantId: number) => void;
+  // Solo llega en escritorio y con permiso de edición: es lo que habilita
+  // arrastrar un icono hasta un bancal.
+  onPlantDragStart?: (plant: Plant, event: React.PointerEvent) => void;
 }
 
-export default function CropPanel({ plants, month, onMonthChange, onPlantSelect }: CropPanelProps) {
+export default function CropPanel({
+  plants,
+  month,
+  onMonthChange,
+  onPlantSelect,
+  onPlantDragStart,
+}: CropPanelProps) {
   if (plants.length === 0) {
     return <p className="text-white/40">No hay plantas registradas en el sistema.</p>;
   }
@@ -49,9 +58,24 @@ export default function CropPanel({ plants, month, onMonthChange, onPlantSelect 
       </div>
 
       <div className="space-y-6">
-        <PlantGroupList title="Siembra" plants={groups.siembra} onPlantSelect={onPlantSelect} />
-        <PlantGroupList title="Recogida" plants={groups.recogida} onPlantSelect={onPlantSelect} />
-        <PlantGroupList title="Otros" plants={groups.otros} onPlantSelect={onPlantSelect} />
+        <PlantGroupList
+          title="Siembra"
+          plants={groups.siembra}
+          onPlantSelect={onPlantSelect}
+          onPlantDragStart={onPlantDragStart}
+        />
+        <PlantGroupList
+          title="Recogida"
+          plants={groups.recogida}
+          onPlantSelect={onPlantSelect}
+          onPlantDragStart={onPlantDragStart}
+        />
+        <PlantGroupList
+          title="Otros"
+          plants={groups.otros}
+          onPlantSelect={onPlantSelect}
+          onPlantDragStart={onPlantDragStart}
+        />
       </div>
     </div>
   );

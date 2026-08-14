@@ -23,6 +23,7 @@ function plant(overrides: Partial<Plant> & { id: number; name: string }): Plant 
     harvest_info: null,
     months_of_growth: null,
     months_of_harvest: null,
+    color: null,
     ...overrides,
   };
 }

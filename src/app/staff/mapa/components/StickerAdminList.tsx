@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import AdminTable from "../../components/AdminTable";
 import { DeleteButton, EditLink, RowActions } from "../../components/RowActions";
-import { useConfirmDelete } from "../../components/useConfirmDelete";
+import { useConfirmDelete } from "@/components/ui/useConfirmDelete";
 import { deleteStickerAction } from "../actions";
 
 interface StickerRow {

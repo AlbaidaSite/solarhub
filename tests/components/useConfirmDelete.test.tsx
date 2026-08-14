@@ -10,7 +10,7 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useConfirmDelete } from "@/app/staff/components/useConfirmDelete";
+import { useConfirmDelete } from "@/components/ui/useConfirmDelete";
 
 type DeleteResult = { ok: true } | { ok: false; error: string };
 

@@ -8,7 +8,7 @@ import {
   EditLink,
   RowActions,
 } from "../../../components/RowActions";
-import { useConfirmDelete } from "../../../components/useConfirmDelete";
+import { useConfirmDelete } from "@/components/ui/useConfirmDelete";
 import { deleteArtistAction } from "../actions";
 
 interface ArtistRow {
