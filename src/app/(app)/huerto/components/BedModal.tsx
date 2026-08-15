@@ -10,6 +10,7 @@ import { canAddCrop } from "../lib/subcells";
 import { moveItem, nearestIndex } from "../lib/reorder";
 import {
   addPlantBedAction,
+  clearBedCropsAction,
   deletePlantBedAction,
   reorderPlantBedsAction,
   updatePlantBedAction,
@@ -27,6 +28,10 @@ interface BedModalProps {
   // Modo actual: los cultivos que se creen aquí nacen en el mismo modo
   // (Actual -> false, Planificada -> true) que el que se está mirando.
   isFuture: boolean;
+  // Garden manager o staff. El listado lo ve todo el mundo; sin permiso
+  // desaparece todo lo que escribe (añadir, mover, editar, eliminar y
+  // vaciar) y el modal se queda en una ficha de consulta.
+  canManage: boolean;
   onClose: () => void;
   onRowsChange: (rows: PlantBed[]) => void;
   onRowDeleted: (rowId: number) => void;
@@ -52,6 +57,7 @@ export default function BedModal({
   plantsById,
   month,
   isFuture,
+  canManage,
   onClose,
   onRowsChange,
   onRowDeleted,
@@ -86,6 +92,16 @@ export default function BedModal({
     itemLabel: "cultivo",
     action: deletePlantBedAction,
     onSuccess: (id) => onRowDeleted(id),
+  });
+
+  // Vaciar el bancal entero: la misma confirmación en dos pasos que borrar
+  // un cultivo suelto, pero preguntando por lo que de verdad pasa (se
+  // vacía el bancal, no se elimina).
+  const { openDelete: openClear, dialog: clearDialog } = useConfirmDelete<number>({
+    itemLabel: "bancal",
+    verb: "vaciar",
+    action: (gardenBedId) => clearBedCropsAction({ gardenBedId, isFuture }),
+    onSuccess: () => onRowsChange([]),
   });
 
   useEffect(() => {
@@ -258,23 +274,25 @@ export default function BedModal({
             />
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setView({ kind: "form", editing: null });
-                }}
-                disabled={!canAdd}
-                title={
-                  canAdd
-                    ? undefined
-                    : "Este bancal no admite otro cultivo: las divisiones quedarían demasiado pequeñas."
-                }
-                className="flex items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-3 font-semibold text-white transition-colors hover:bg-white/20 hover:text-amber-300 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10 disabled:hover:text-white"
-              >
-                <Plus size={18} strokeWidth={2.5} />
-                Añadir cultivo
-              </button>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setView({ kind: "form", editing: null });
+                  }}
+                  disabled={!canAdd}
+                  title={
+                    canAdd
+                      ? undefined
+                      : "Este bancal no admite otro cultivo: las divisiones quedarían demasiado pequeñas."
+                  }
+                  className="flex items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-3 font-semibold text-white transition-colors hover:bg-white/20 hover:text-amber-300 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/10 disabled:hover:text-white"
+                >
+                  <Plus size={18} strokeWidth={2.5} />
+                  Añadir cultivo
+                </button>
+              )}
 
               {error && <p className="text-sm text-red-400">{error}</p>}
 
@@ -296,10 +314,24 @@ export default function BedModal({
                         }}
                         onDelete={openDelete}
                         onPlantSelect={onPlantSelect}
+                        canManage={canManage}
                       />
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {/* Al final del listado y sin recuadro: es una acción de
+                  barrido, no una más de la lista, y no tiene sentido en un
+                  bancal que ya está vacío. */}
+              {canManage && rows.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => openClear(bed.id)}
+                  className="self-center px-2 py-1 text-sm font-semibold text-red-300/70 hover:text-red-400 transition-colors cursor-pointer"
+                >
+                  Vaciar Bancal
+                </button>
               )}
             </>
           )}
@@ -309,6 +341,7 @@ export default function BedModal({
               mueren en el stopPropagation de este div en vez de llegar al
               fondo, que cerraría el modal de bancal entero. */}
           {deleteDialog}
+          {clearDialog}
         </div>
       </FocusScope>
     </div>

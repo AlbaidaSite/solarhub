@@ -17,6 +17,9 @@ interface CropListRowProps {
   // Abre la ficha del cultivo. Ausente (o fila sin planta identificada):
   // el icono y el nombre no son clicables.
   onPlantSelect?: (plantId: number) => void;
+  // Garden manager o staff: sin permiso la fila se ve igual pero sin
+  // ninguno de sus tres botones.
+  canManage: boolean;
 }
 
 // Fila del listado de cultivos de un bancal: icono a la izquierda,
@@ -31,6 +34,7 @@ export default function CropListRow({
   onEdit,
   onDelete,
   onPlantSelect,
+  canManage,
 }: CropListRowProps) {
   const colors = plantColorClasses(plant?.color ?? null);
 
@@ -85,40 +89,42 @@ export default function CropListRow({
         <div className="flex flex-1 items-center gap-3 min-w-0 text-white">{identity}</div>
       )}
 
-      <div className="flex shrink-0 items-center gap-1">
-        {canReorder && (
+      {canManage && (
+        <div className="flex shrink-0 items-center gap-1">
+          {canReorder && (
+            <button
+              type="button"
+              // Sin onClick: el gesto es mantener pulsado y arrastrar. Se
+              // captura en pointerdown para que valga igual con ratón y con
+              // dedo (touch-none evita que el móvil lo lea como scroll).
+              onPointerDown={(e) => onReorderStart(row.id, e)}
+              aria-label="Mover cultivo"
+              title="Mover (mantén pulsado y arrastra)"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white transition-colors cursor-grab active:cursor-grabbing touch-none"
+            >
+              <GripVertical size={16} />
+            </button>
+          )}
           <button
             type="button"
-            // Sin onClick: el gesto es mantener pulsado y arrastrar. Se
-            // captura en pointerdown para que valga igual con ratón y con
-            // dedo (touch-none evita que el móvil lo lea como scroll).
-            onPointerDown={(e) => onReorderStart(row.id, e)}
-            aria-label="Mover cultivo"
-            title="Mover (mantén pulsado y arrastra)"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white transition-colors cursor-grab active:cursor-grabbing touch-none"
+            onClick={() => onEdit(row)}
+            aria-label="Editar cultivo"
+            title="Editar"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-amber-300 transition-colors cursor-pointer"
           >
-            <GripVertical size={16} />
+            <Pencil size={16} />
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => onEdit(row)}
-          aria-label="Editar cultivo"
-          title="Editar"
-          className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-amber-300 transition-colors cursor-pointer"
-        >
-          <Pencil size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(row.id)}
-          aria-label="Eliminar cultivo"
-          title="Eliminar"
-          className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-red-400 transition-colors cursor-pointer"
-        >
-          <Trash2 size={16} />
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => onDelete(row.id)}
+            aria-label="Eliminar cultivo"
+            title="Eliminar"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-red-400 transition-colors cursor-pointer"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

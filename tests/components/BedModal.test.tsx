@@ -18,12 +18,14 @@ const addPlantBedAction = vi.fn();
 const updatePlantBedAction = vi.fn();
 const deletePlantBedAction = vi.fn();
 const reorderPlantBedsAction = vi.fn();
+const clearBedCropsAction = vi.fn();
 
 vi.mock("@/app/(app)/huerto/actions", () => ({
   addPlantBedAction: (input: unknown) => addPlantBedAction(input),
   updatePlantBedAction: (input: unknown) => updatePlantBedAction(input),
   deletePlantBedAction: (id: number) => deletePlantBedAction(id),
   reorderPlantBedsAction: (input: unknown) => reorderPlantBedsAction(input),
+  clearBedCropsAction: (input: unknown) => clearBedCropsAction(input),
 }));
 
 import BedModal from "@/app/(app)/huerto/components/BedModal";
@@ -62,6 +64,7 @@ function renderModal(props: Partial<React.ComponentProps<typeof BedModal>> = {})
       plantsById={plantsById}
       month={3}
       isFuture={false}
+      canManage
       onClose={onClose}
       onRowsChange={onRowsChange}
       onRowDeleted={onRowDeleted}
@@ -141,6 +144,76 @@ describe("BedModal — listado", () => {
   it("sin ficha que abrir, la fila no es clicable", () => {
     renderModal();
     expect(screen.queryByRole("button", { name: /Tomate/ })).not.toBeInTheDocument();
+  });
+
+  // El listado es de consulta para todo el mundo; lo que desaparece sin
+  // permiso es todo lo que escribe.
+  it("sin permiso se ven los cultivos y su ficha, pero ningún botón de edición", async () => {
+    const user = userEvent.setup();
+    const onPlantSelect = vi.fn();
+    renderModal({
+      canManage: false,
+      onPlantSelect,
+      rows: [row({ id: 1 }), row({ id: 2, plant_id: 2, order_number: 1 })],
+    });
+
+    expect(screen.getByText("Tomate")).toBeInTheDocument();
+    expect(screen.getByText("Lechuga")).toBeInTheDocument();
+
+    expect(screen.queryByRole("button", { name: /Añadir cultivo/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar cultivo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Eliminar cultivo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mover cultivo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Vaciar Bancal" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Tomate/ }));
+    expect(onPlantSelect).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("BedModal — vaciar el bancal", () => {
+  it("no se ofrece vaciar un bancal que ya está vacío", () => {
+    renderModal({ rows: [] });
+    expect(screen.queryByRole("button", { name: "Vaciar Bancal" })).not.toBeInTheDocument();
+  });
+
+  it("pide doble confirmación y vacía solo el modo que se está viendo", async () => {
+    const user = userEvent.setup();
+    clearBedCropsAction.mockResolvedValue({ ok: true });
+    const { onRowsChange } = renderModal({
+      isFuture: true,
+      rows: [row({ id: 1 }), row({ id: 2, order_number: 1 })],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Vaciar Bancal" }));
+    expect(clearBedCropsAction).not.toHaveBeenCalled();
+
+    // La pregunta tiene que decir lo que pasa de verdad: se vacía el
+    // bancal, no se elimina.
+    expect(screen.getByText("¿Estás seguro de que quieres vaciar este bancal?")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Sí, estoy seguro" }));
+    expect(clearBedCropsAction).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    await waitFor(() =>
+      expect(clearBedCropsAction).toHaveBeenCalledWith({ gardenBedId: wideBed.id, isFuture: true }),
+    );
+    expect(onRowsChange).toHaveBeenCalledWith([]);
+  });
+
+  it("si el servidor lo rechaza, el error se ve y no se toca la lista", async () => {
+    const user = userEvent.setup();
+    clearBedCropsAction.mockResolvedValue({ ok: false, error: "No tienes permiso." });
+    const { onRowsChange } = renderModal();
+
+    await user.click(screen.getByRole("button", { name: "Vaciar Bancal" }));
+    await user.click(screen.getByRole("button", { name: "Sí, estoy seguro" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    expect(await screen.findByText("No tienes permiso.")).toBeInTheDocument();
+    expect(onRowsChange).not.toHaveBeenCalled();
   });
 });
 

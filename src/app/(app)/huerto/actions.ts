@@ -249,6 +249,35 @@ export async function deletePlantBedAction(id: number): Promise<PlantBedResult> 
   return finishWithOrder(supabase, row.garden_bed_id, row.is_future, remaining);
 }
 
+export interface ClearBedCropsInput {
+  gardenBedId: number;
+  isFuture: boolean;
+}
+
+// Vacía de una vez el bancal en el modo que se está viendo, que es el único
+// que enseña el modal: quien mira los cultivos actuales no espera perder de
+// paso lo que tenía planificado (ni al revés).
+export async function clearBedCropsAction(
+  input: ClearBedCropsInput,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase } = auth;
+
+  if (!(await canManageGarden(supabase))) {
+    return { ok: false, error: "No tienes permiso para editar el huerto." };
+  }
+
+  const { error } = await supabase
+    .from("plant_bed")
+    .delete()
+    .eq("garden_bed_id", input.gardenBedId)
+    .eq("is_future", input.isFuture);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 export interface ReorderPlantBedsInput {
   gardenBedId: number;
   isFuture: boolean;

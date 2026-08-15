@@ -8,6 +8,10 @@ type DeleteResult = { ok: true } | { ok: false; error: string };
 interface UseConfirmDeleteOpts<Id extends number | string> {
   // Texto inyectado en "¿Estás seguro de que quieres eliminar este {itemLabel}?".
   itemLabel: string;
+  // Acción de la pregunta, por si no es "eliminar" el elemento: vaciar un
+  // bancal borra sus cultivos, pero no el bancal, y decirlo mal en una
+  // confirmación destructiva es exactamente lo que no puede pasar.
+  verb?: string;
   // Concordancia de género del demostrativo con itemLabel: "este cultivo",
   // pero "esta entrada del diario". Por defecto masculino, que es lo que
   // pide la mayoría de listas de la app.
@@ -30,6 +34,7 @@ interface UseConfirmDeleteReturn<Id extends number | string> {
 // borrado en 2 pasos es el gesto estándar de toda la app.
 export function useConfirmDelete<Id extends number | string>({
   itemLabel,
+  verb = "eliminar",
   demonstrative = "este",
   action,
   onSuccess,
@@ -67,7 +72,7 @@ export function useConfirmDelete<Id extends number | string>({
   const dialog = state ? (
     <ConfirmDialog
       step={state.step}
-      step1Message={`¿Estás seguro de que quieres eliminar ${demonstrative} ${itemLabel}?`}
+      step1Message={`¿Estás seguro de que quieres ${verb} ${demonstrative} ${itemLabel}?`}
       step2Message="Esta acción no se puede deshacer. ¿Confirmar eliminación?"
       confirmLabel="Sí, estoy seguro"
       pendingLabel="Eliminando…"
