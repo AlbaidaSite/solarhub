@@ -97,12 +97,24 @@ describe("HuertoView", () => {
     expect(bancalPanel).not.toHaveClass("hidden");
   });
 
-  it("sin permiso de edición los bancales no son clicables", async () => {
+  // Consultar qué hay plantado en un bancal es para todo el mundo; lo que
+  // depende del permiso es lo que se puede tocar una vez abierto.
+  it("sin permiso de edición los bancales se abren igual, pero sin nada que editar", async () => {
+    const user = userEvent.setup();
     const { container } = render(
       <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />,
     );
     await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
-    expect(container.querySelectorAll('g[role="button"]')).toHaveLength(0);
+
+    const bedButton = container.querySelector('g[role="button"]');
+    expect(bedButton).not.toBeNull();
+
+    await user.click(bedButton as SVGGElement);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Ajo")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /Añadir cultivo/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Vaciar Bancal" })).not.toBeInTheDocument();
   });
 
   it("con permiso, pulsar un bancal abre su modal con los cultivos que tiene", async () => {

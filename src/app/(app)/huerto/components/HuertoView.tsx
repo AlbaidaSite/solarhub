@@ -280,7 +280,10 @@ export default function HuertoView({
               mode={mode}
               svgRef={svgRef}
               preview={preview}
-              onBedSelect={canManage ? setSelectedBedId : undefined}
+              // Abrir un bancal es consultar lo que tiene plantado, así que
+              // no depende del permiso: lo que decide canManage es qué
+              // botones enseña el modal una vez abierto.
+              onBedSelect={setSelectedBedId}
             />
           </div>
         </section>
@@ -330,6 +333,7 @@ export default function HuertoView({
           plantsById={plantsById}
           month={month}
           isFuture={isFuture}
+          canManage={canManage}
           onClose={handleBedClose}
           onRowsChange={(rows) => replaceBedRows(selectedBed.id, isFuture, rows)}
           onRowDeleted={removeRow}
