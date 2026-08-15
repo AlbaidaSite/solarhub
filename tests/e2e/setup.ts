@@ -488,6 +488,10 @@ afterEach(async () => {
     trackedGardenBeds.clear();
   }
   if (trackedPlants.size > 0) {
+    // crop_diary.plant_id no lleva ON DELETE, así que las entradas del
+    // diario tienen que irse ANTES que su planta o el borrado fallaría y
+    // la fila quedaría ahí para siempre.
+    await admin.from("crop_diary").delete().in("plant_id", [...trackedPlants]);
     await admin.from("plant").delete().in("id", [...trackedPlants]);
     trackedPlants.clear();
   }

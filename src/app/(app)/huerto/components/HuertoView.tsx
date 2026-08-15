@@ -7,6 +7,7 @@ import ModeToggle from "./ModeToggle";
 import GardenCanvas, { type CanvasPreview } from "./GardenCanvas";
 import CropPanel from "./CropPanel";
 import BedModal from "./BedModal";
+import PlantModal from "./PlantModal";
 import HuertoTabs, { HUERTO_TAB_IDS, type HuertoTab } from "./HuertoTabs";
 import { bedsForDistribution } from "../lib/bedsForDistribution";
 import { canAddCrop } from "../lib/subcells";
@@ -41,7 +42,7 @@ interface DragRef {
 }
 
 export default function HuertoView({
-  plants,
+  plants: initialPlants,
   beds,
   plantBeds: initialPlantBeds,
   initialMonth,
@@ -49,9 +50,14 @@ export default function HuertoView({
   const [mode, setMode] = useState<GardenMode>("actual");
   const [month, setMonth] = useState(initialMonth);
   const [tab, setTab] = useState<HuertoTab>("bancal");
+  // Las plantas viven en estado (y no solo en las props) porque la ficha de
+  // cultivo deja editar su información de siembra/recolecta: al guardar se
+  // sustituye la planta aquí y el panel y el lienzo se enteran solos.
+  const [plants, setPlants] = useState(initialPlants);
   const [plantBeds, setPlantBeds] = useState(initialPlantBeds);
   const [canManage, setCanManage] = useState(false);
   const [selectedBedId, setSelectedBedId] = useState<number | null>(null);
+  const [selectedPlantId, setSelectedPlantId] = useState<number | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
 
   // Arrastre desde el panel de cultivos. Lo que hace falta para decidir
@@ -106,9 +112,12 @@ export default function HuertoView({
     setPlantBeds((prev) => prev.filter((pb) => pb.id !== rowId));
   }, []);
 
-  const handlePlantSelect = useCallback((_plantId: number) => {
-    // Modal de detalle de planta: trabajo posterior, ver seed_info /
-    // harvest_info en el modelo. Handler expuesto sin implementar.
+  const handlePlantSelect = useCallback((plantId: number) => {
+    setSelectedPlantId(plantId);
+  }, []);
+
+  const handlePlantChange = useCallback((updated: Plant) => {
+    setPlants((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   }, []);
 
   // ─── Arrastrar un cultivo del panel hasta un bancal ────────────────────
@@ -222,6 +231,16 @@ export default function HuertoView({
 
   const selectedBed = selectedBedId != null ? beds.find((b) => b.id === selectedBedId) : undefined;
   const selectedRows = selectedBedId != null ? distribution.get(selectedBedId) ?? [] : [];
+  const selectedPlant = selectedPlantId != null ? plantsById.get(selectedPlantId) : undefined;
+
+  // La ficha de cultivo puede estar ABIERTA ENCIMA del modal de bancal
+  // (se abre desde su listado). Mientras lo esté, el bancal ignora su
+  // propio cierre: el Escape lo consume la ficha, que se cierra sola, y
+  // sin esto una sola pulsación cerraría los dos a la vez.
+  const handleBedClose = useCallback(() => {
+    if (selectedPlantId != null) return;
+    setSelectedBedId(null);
+  }, [selectedPlantId]);
 
   return (
     // Altura explícita en vez de heredar h-full: el padding superior
@@ -311,9 +330,19 @@ export default function HuertoView({
           plantsById={plantsById}
           month={month}
           isFuture={isFuture}
-          onClose={() => setSelectedBedId(null)}
+          onClose={handleBedClose}
           onRowsChange={(rows) => replaceBedRows(selectedBed.id, isFuture, rows)}
           onRowDeleted={removeRow}
+          onPlantSelect={handlePlantSelect}
+        />
+      )}
+
+      {selectedPlant && (
+        <PlantModal
+          plant={selectedPlant}
+          canManage={canManage}
+          onClose={() => setSelectedPlantId(null)}
+          onPlantChange={handlePlantChange}
         />
       )}
     </div>

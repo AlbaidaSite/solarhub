@@ -30,6 +30,9 @@ interface BedModalProps {
   onClose: () => void;
   onRowsChange: (rows: PlantBed[]) => void;
   onRowDeleted: (rowId: number) => void;
+  // Abre la ficha del cultivo (icono o nombre de una fila). La ficha se
+  // monta fuera de este modal, encima de él: la gestiona HuertoView.
+  onPlantSelect?: (plantId: number) => void;
 }
 
 type View = { kind: "list" } | { kind: "form"; editing: PlantBed | null };
@@ -52,6 +55,7 @@ export default function BedModal({
   onClose,
   onRowsChange,
   onRowDeleted,
+  onPlantSelect,
 }: BedModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -291,6 +295,7 @@ export default function BedModal({
                           setView({ kind: "form", editing: target });
                         }}
                         onDelete={openDelete}
+                        onPlantSelect={onPlantSelect}
                       />
                     </li>
                   ))}

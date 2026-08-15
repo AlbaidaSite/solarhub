@@ -4,15 +4,36 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUserActionClient } from "@/lib/supabase/actionAuth";
 import { getStorageUrl } from "@/lib/supabase/storage";
 import { canAddCrop } from "./lib/subcells";
-import type { GardenBed, Plant, PlantBed } from "@/types/garden";
+import { MAX_SOW_YEAR, MIN_SOW_YEAR } from "./lib/diary";
+import type { CropDiaryEntry, GardenBed, Plant, PlantBed } from "@/types/garden";
 
 type ServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
+const PLANT_COLUMNS =
+  "id, name, icon_path, seed_info, harvest_info, months_of_growth, months_of_harvest, color";
 const PLANT_BED_COLUMNS = "id, plant_id, garden_bed_id, description, is_future, order_number";
+const CROP_DIARY_COLUMNS = "id, plant_id, sow_year, notes, updated_at";
 
 function normalizeMonths(months: number[] | null): number[] | null {
   if (months == null) return null;
   return months.map(Number);
+}
+
+// Deja una fila de plant lista para el cliente: icono resuelto a URL
+// pública y meses ya numéricos. Lo aplican por igual la carga inicial y
+// la edición de la ficha, para que una planta editada no vuelva con el
+// icon_path crudo y la imagen deje de cargar.
+function toClientPlant(plant: Plant): Plant {
+  return {
+    ...plant,
+    icon_path: getStorageUrl(plant.icon_path),
+    // PostgREST puede devolver smallint[] con elementos ya numéricos,
+    // pero se normaliza aquí (frontera con el exterior) para que
+    // monthGroups pueda comparar con Array.includes(m) sin que un
+    // desajuste string/number ("1" !== 1) mande todo a "Otros".
+    months_of_growth: normalizeMonths(plant.months_of_growth),
+    months_of_harvest: normalizeMonths(plant.months_of_harvest),
+  };
 }
 
 export interface GardenData {
@@ -31,7 +52,7 @@ export async function getGardenDataAction(): Promise<GardenData> {
   const [plantsRes, bedsRes, plantBedsRes] = await Promise.all([
     supabase
       .from("plant")
-      .select("id, name, icon_path, seed_info, harvest_info, months_of_growth, months_of_harvest, color")
+      .select(PLANT_COLUMNS)
       .order("name")
       .returns<Plant[]>(),
     supabase
@@ -64,16 +85,7 @@ export async function getGardenDataAction(): Promise<GardenData> {
     console.error(`Error loading plant_bed: ${e.message} (code=${e.code}, details=${e.details}, hint=${e.hint})`);
   }
 
-  const plants = (plantsRes.data ?? []).map((p) => ({
-    ...p,
-    icon_path: getStorageUrl(p.icon_path),
-    // PostgREST puede devolver smallint[] con elementos ya numéricos,
-    // pero se normaliza aquí (frontera con el exterior) para que
-    // monthGroups pueda comparar con Array.includes(m) sin que un
-    // desajuste string/number ("1" !== 1) mande todo a "Otros".
-    months_of_growth: normalizeMonths(p.months_of_growth),
-    months_of_harvest: normalizeMonths(p.months_of_harvest),
-  }));
+  const plants = (plantsRes.data ?? []).map(toClientPlant);
 
   return {
     plants,
@@ -160,7 +172,7 @@ export async function addPlantBedAction(input: AddPlantBedInput): Promise<PlantB
     .insert({
       garden_bed_id: input.gardenBedId,
       plant_id: input.plantId,
-      description: normalizeDescription(input.description),
+      description: nullIfBlank(input.description),
       is_future: input.isFuture,
       order_number: index,
     })
@@ -197,7 +209,7 @@ export async function updatePlantBedAction(input: UpdatePlantBedInput): Promise<
     .from("plant_bed")
     .update({
       plant_id: input.plantId,
-      description: normalizeDescription(input.description),
+      description: nullIfBlank(input.description),
     })
     .eq("id", input.id)
     .select(PLANT_BED_COLUMNS)
@@ -270,6 +282,176 @@ export async function reorderPlantBedsAction(
   return finishWithOrder(supabase, input.gardenBedId, input.isFuture, ordered as PlantBed[]);
 }
 
+// ─── Ficha de cultivo: siembra y recolecta ──────────────────────────────────
+// Las dos mitades de la ficha (seed_info + months_of_growth, harvest_info +
+// months_of_harvest) se editan por separado y comparten acción: es el mismo
+// par "texto + meses" y solo cambia la pareja de columnas que toca.
+
+export type PlantSection = "siembra" | "recolecta";
+
+export interface UpdatePlantSectionInput {
+  plantId: number;
+  section: PlantSection;
+  info: string | null;
+  // Meses (1-12) en los que se siembra o se recolecta. Lista vacía =
+  // sin meses declarados; se guarda '{}' y no null (son equivalentes
+  // para la vista, ver monthGroups).
+  months: number[];
+}
+
+export type PlantResult = { ok: true; plant: Plant } | { ok: false; error: string };
+
+export async function updatePlantSectionAction(
+  input: UpdatePlantSectionInput,
+): Promise<PlantResult> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase } = auth;
+
+  if (!(await canManageGarden(supabase))) {
+    return { ok: false, error: "No tienes permiso para editar el huerto." };
+  }
+
+  const months = normalizeMonthSelection(input.months);
+  if (months === null) {
+    return { ok: false, error: "Los meses deben ir de 1 (enero) a 12 (diciembre)." };
+  }
+
+  const info = nullIfBlank(input.info);
+  const patch =
+    input.section === "siembra"
+      ? { seed_info: info, months_of_growth: months }
+      : { harvest_info: info, months_of_harvest: months };
+
+  const { data, error } = await supabase
+    .from("plant")
+    .update(patch)
+    .eq("id", input.plantId)
+    .select(PLANT_COLUMNS)
+    .maybeSingle<Plant>();
+
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Cultivo no encontrado." };
+
+  return { ok: true, plant: toClientPlant(data) };
+}
+
+// ─── Ficha de cultivo: diario ───────────────────────────────────────────────
+// Igual que los cultivos de un bancal, las mutaciones devuelven el diario
+// COMPLETO de la planta ya ordenado: son unas pocas filas y así el cliente no
+// tiene que recolocar la entrada nueva en su sitio.
+
+export type CropDiaryResult =
+  | { ok: true; entries: CropDiaryEntry[] }
+  | { ok: false; error: string };
+
+// El diario no viaja con el resto de datos del huerto (getGardenDataAction):
+// solo hace falta al abrir la ficha de un cultivo concreto, y cargarlo entero
+// para todas las plantas sería traer datos que casi nadie mira.
+export async function getCropDiaryAction(plantId: number): Promise<CropDiaryEntry[]> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("crop_diary")
+    .select(CROP_DIARY_COLUMNS)
+    .eq("plant_id", plantId)
+    .order("sow_year", { ascending: false })
+    .order("id")
+    .returns<CropDiaryEntry[]>();
+
+  if (error) {
+    console.error(
+      `Error loading crop_diary: ${error.message} (code=${error.code}, details=${error.details}, hint=${error.hint})`,
+    );
+  }
+
+  return data ?? [];
+}
+
+export interface AddCropDiaryEntryInput {
+  plantId: number;
+  sowYear: number;
+  notes: string;
+}
+
+export async function addCropDiaryEntryAction(
+  input: AddCropDiaryEntryInput,
+): Promise<CropDiaryResult> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase } = auth;
+
+  if (!(await canManageGarden(supabase))) {
+    return { ok: false, error: "No tienes permiso para editar el huerto." };
+  }
+
+  const invalid = validateDiaryEntry(input.sowYear, input.notes);
+  if (invalid) return { ok: false, error: invalid };
+
+  const { error } = await supabase.from("crop_diary").insert({
+    plant_id: input.plantId,
+    sow_year: input.sowYear,
+    notes: input.notes.trim(),
+  });
+
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true, entries: await getCropDiaryAction(input.plantId) };
+}
+
+export interface UpdateCropDiaryEntryInput {
+  id: number;
+  sowYear: number;
+  notes: string;
+}
+
+export async function updateCropDiaryEntryAction(
+  input: UpdateCropDiaryEntryInput,
+): Promise<CropDiaryResult> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase } = auth;
+
+  if (!(await canManageGarden(supabase))) {
+    return { ok: false, error: "No tienes permiso para editar el huerto." };
+  }
+
+  const invalid = validateDiaryEntry(input.sowYear, input.notes);
+  if (invalid) return { ok: false, error: invalid };
+
+  const { data, error } = await supabase
+    .from("crop_diary")
+    .update({ sow_year: input.sowYear, notes: input.notes.trim() })
+    .eq("id", input.id)
+    .select("plant_id")
+    .maybeSingle<{ plant_id: number }>();
+
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Entrada del diario no encontrada." };
+
+  return { ok: true, entries: await getCropDiaryAction(data.plant_id) };
+}
+
+// Devuelve solo ok/error (no el diario resultante): quien borra ya sabe qué
+// entrada se ha ido y la quita de su lista, igual que hace el modal de bancal
+// con un cultivo eliminado.
+export async function deleteCropDiaryEntryAction(
+  id: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase } = auth;
+
+  if (!(await canManageGarden(supabase))) {
+    return { ok: false, error: "No tienes permiso para editar el huerto." };
+  }
+
+  const { error } = await supabase.from("crop_diary").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true };
+}
+
 // ─── Apoyo ──────────────────────────────────────────────────────────────────
 
 async function canManageGarden(supabase: ServerClient): Promise<boolean> {
@@ -329,9 +511,30 @@ function clampIndex(index: number, length: number): number {
   return Math.min(Math.max(Math.trunc(index), 0), length);
 }
 
-// Un "tipo" en blanco es no tener tipo: se guarda null y no una cadena
-// vacía, para que la fila del listado no reserve sitio para nada.
-function normalizeDescription(description: string | null): string | null {
-  const trimmed = description?.trim() ?? "";
+// Un texto opcional en blanco es no tener texto: se guarda null y no una
+// cadena vacía, para que quien lo pinte (el "tipo" bajo el nombre de un
+// cultivo, la información de siembra…) no reserve sitio para nada.
+function nullIfBlank(text: string | null): string | null {
+  const trimmed = text?.trim() ?? "";
   return trimmed === "" ? null : trimmed;
+}
+
+// Ordena y quita repetidos, y devuelve null si algún valor no es un mes
+// (1-12). Lo segundo lo rechazaría igual el CHECK de plant_months_*_range,
+// pero como un error de Postgres sin traducir; aquí se convierte en un
+// mensaje que el formulario puede enseñar tal cual.
+function normalizeMonthSelection(months: number[]): number[] | null {
+  const unique = [...new Set(months.map(Number))];
+  if (unique.some((m) => !Number.isInteger(m) || m < 1 || m > 12)) return null;
+  return unique.sort((a, b) => a - b);
+}
+
+// Una entrada sin texto no es una entrada: la columna admite null, pero el
+// diario se lee entrada a entrada y una vacía solo ocuparía sitio.
+function validateDiaryEntry(sowYear: number, notes: string): string | null {
+  if (!Number.isInteger(sowYear) || sowYear < MIN_SOW_YEAR || sowYear > MAX_SOW_YEAR) {
+    return `El año debe estar entre ${MIN_SOW_YEAR} y ${MAX_SOW_YEAR}.`;
+  }
+  if (notes.trim() === "") return "Escribe algo en la entrada del diario.";
+  return null;
 }

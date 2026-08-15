@@ -9,3 +9,11 @@ export const MADRID_TZ = "Europe/Madrid";
 export function getCurrentMonthInMadrid(): number {
   return today(MADRID_TZ).month;
 }
+
+// Año por defecto de una entrada nueva del diario. Aquí no hay riesgo de
+// hidratación (la ficha de cultivo se monta tras un clic, nunca en SSR),
+// pero se calcula igual en la zona del huerto: el 1 de enero a las 00:30
+// en Madrid la entrada debe nacer en el año nuevo, no en el anterior.
+export function getCurrentYearInMadrid(): number {
+  return today(MADRID_TZ).year;
+}
