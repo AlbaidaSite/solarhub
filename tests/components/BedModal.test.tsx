@@ -128,6 +128,20 @@ describe("BedModal — listado", () => {
     renderModal({ rows: [] });
     expect(screen.getByText("Este bancal está vacío.")).toBeInTheDocument();
   });
+
+  it("el icono y el nombre de un cultivo abren su ficha", async () => {
+    const user = userEvent.setup();
+    const onPlantSelect = vi.fn();
+    renderModal({ rows: [row({ id: 1, description: "Cherry" })], onPlantSelect });
+
+    await user.click(screen.getByRole("button", { name: /Tomate/ }));
+    expect(onPlantSelect).toHaveBeenCalledWith(1);
+  });
+
+  it("sin ficha que abrir, la fila no es clicable", () => {
+    renderModal();
+    expect(screen.queryByRole("button", { name: /Tomate/ })).not.toBeInTheDocument();
+  });
 });
 
 describe("BedModal — alta y edición", () => {

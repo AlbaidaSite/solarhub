@@ -11,6 +11,19 @@ export interface Plant {
   color: string | null;
 }
 
+// Una anotación del diario de un cultivo, atada al año de siembra
+// (sow_year) y no a una fecha concreta: el diario se navega por años.
+// Un mismo año puede tener varias entradas —no hay unicidad en BD— y la
+// ficha las muestra todas juntas bajo su año.
+export interface CropDiaryEntry {
+  id: number;
+  plant_id: number;
+  sow_year: number;
+  notes: string | null;
+  // ISO 8601, tal cual lo devuelve PostgREST para un timestamptz.
+  updated_at: string;
+}
+
 export interface GardenBed {
   id: number;
   name: string;

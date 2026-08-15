@@ -14,6 +14,9 @@ interface CropListRowProps {
   onReorderStart: (rowId: number, event: React.PointerEvent) => void;
   onEdit: (row: PlantBed) => void;
   onDelete: (rowId: number) => void;
+  // Abre la ficha del cultivo. Ausente (o fila sin planta identificada):
+  // el icono y el nombre no son clicables.
+  onPlantSelect?: (plantId: number) => void;
 }
 
 // Fila del listado de cultivos de un bancal: icono a la izquierda,
@@ -27,15 +30,14 @@ export default function CropListRow({
   onReorderStart,
   onEdit,
   onDelete,
+  onPlantSelect,
 }: CropListRowProps) {
   const colors = plantColorClasses(plant?.color ?? null);
 
-  return (
-    <div
-      className={`flex items-center gap-3 rounded-xl border bg-zinc-900 p-2 transition-colors ${
-        isDragging ? "border-white/40 shadow-lg" : "border-white/10"
-      }`}
-    >
+  // Icono + nombre: el bloque es el mismo se pueda abrir la ficha o no,
+  // solo cambia si lo envuelve un <button> o un <div>.
+  const identity = (
+    <>
       <div
         className={`relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 ${colors.border}`}
       >
@@ -55,14 +57,33 @@ export default function CropListRow({
         )}
       </div>
 
-      <div className="flex flex-1 flex-col min-w-0">
-        <span className="text-white font-medium truncate">
-          {plant?.name ?? "Cultivo sin identificar"}
-        </span>
+      <div className="flex flex-1 flex-col min-w-0 text-left">
+        <span className="font-medium truncate">{plant?.name ?? "Cultivo sin identificar"}</span>
         {row.description && (
           <span className="text-sm text-white/50 truncate">{row.description}</span>
         )}
       </div>
+    </>
+  );
+
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-xl border bg-zinc-900 p-2 transition-colors ${
+        isDragging ? "border-white/40 shadow-lg" : "border-white/10"
+      }`}
+    >
+      {plant && onPlantSelect ? (
+        <button
+          type="button"
+          onClick={() => onPlantSelect(plant.id)}
+          title={`Ver la ficha de ${plant.name}`}
+          className="flex flex-1 items-center gap-3 min-w-0 text-white transition-colors hover:text-amber-300 cursor-pointer"
+        >
+          {identity}
+        </button>
+      ) : (
+        <div className="flex flex-1 items-center gap-3 min-w-0 text-white">{identity}</div>
+      )}
 
       <div className="flex shrink-0 items-center gap-1">
         {canReorder && (

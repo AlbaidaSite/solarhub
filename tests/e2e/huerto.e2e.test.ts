@@ -128,6 +128,92 @@ describe.skipIf(!supabaseUp)(
       expect(error).not.toBeNull();
     });
 
+    // La ficha de cultivo deja editar la información de siembra/recolecta y
+    // el diario a garden managers Y a staff, y las políticas de plant y
+    // crop_diary se ampliaron para acompañarlo (ver
+    // 20260815120000_plant_crop_diary_write_staff.sql).
+    it("garden manager y staff pueden editar la ficha de una planta; un usuario normal no", async () => {
+      const plant = await createTestPlant();
+      const manager = await createTestUser({ isGardenManager: true });
+      const staff = await createTestUser({ isStaff: true });
+      const user = await createTestUser();
+
+      const managerClient = await createUserClient(manager.email, manager.password);
+      const { error: managerError } = await managerClient
+        .from("plant")
+        .update({ seed_info: "Sembrar a voleo.", months_of_growth: [3] })
+        .eq("id", plant.id);
+      expect(managerError).toBeNull();
+
+      const staffClient = await createUserClient(staff.email, staff.password);
+      const { error: staffError } = await staffClient
+        .from("plant")
+        .update({ harvest_info: "Recolectar en verde.", months_of_harvest: [7] })
+        .eq("id", plant.id);
+      expect(staffError).toBeNull();
+
+      // Sin error pero sin efecto: un UPDATE que no casa con la política no
+      // ve ninguna fila, así que hay que comprobar el dato, no el error.
+      const userClient = await createUserClient(user.email, user.password);
+      await userClient.from("plant").update({ seed_info: "No debería guardarse." }).eq("id", plant.id);
+
+      const admin = createAdminClient();
+      const { data } = await admin
+        .from("plant")
+        .select("seed_info, harvest_info")
+        .eq("id", plant.id)
+        .single();
+      expect(data?.seed_info).toBe("Sembrar a voleo.");
+      expect(data?.harvest_info).toBe("Recolectar en verde.");
+    });
+
+    it("staff puede crear, editar y borrar entradas de crop_diary; un usuario normal no", async () => {
+      const plant = await createTestPlant();
+      const staff = await createTestUser({ isStaff: true });
+      const user = await createTestUser();
+
+      const staffClient = await createUserClient(staff.email, staff.password);
+      const { data: inserted, error: insertError } = await staffClient
+        .from("crop_diary")
+        .insert({ plant_id: plant.id, sow_year: 2026, notes: "Buena cosecha." })
+        .select("id")
+        .single();
+      expect(insertError).toBeNull();
+      expect(inserted?.id).toBeTypeOf("number");
+
+      const { error: updateError } = await staffClient
+        .from("crop_diary")
+        .update({ notes: "Buena cosecha, mucho pulgón." })
+        .eq("id", inserted!.id);
+      expect(updateError).toBeNull();
+
+      // Un autenticado normal lee el diario pero no lo toca.
+      const userClient = await createUserClient(user.email, user.password);
+      const { data: readable } = await userClient
+        .from("crop_diary")
+        .select("id")
+        .eq("id", inserted!.id);
+      expect(readable).toEqual([{ id: inserted!.id }]);
+
+      const { error: userInsertError } = await userClient
+        .from("crop_diary")
+        .insert({ plant_id: plant.id, sow_year: 2025, notes: "No debería entrar." });
+      expect(userInsertError).not.toBeNull();
+
+      await userClient.from("crop_diary").delete().eq("id", inserted!.id);
+      const { data: stillThere } = await userClient
+        .from("crop_diary")
+        .select("id")
+        .eq("id", inserted!.id);
+      expect(stillThere).toEqual([{ id: inserted!.id }]);
+
+      const { error: deleteError } = await staffClient
+        .from("crop_diary")
+        .delete()
+        .eq("id", inserted!.id);
+      expect(deleteError).toBeNull();
+    });
+
     it("order_number no admite negativos", async () => {
       const admin = createAdminClient();
       const bed = await createTestGardenBed();
