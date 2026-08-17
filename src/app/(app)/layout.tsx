@@ -15,6 +15,13 @@ export default function AppLayout({children,}: {children: ReactNode}) {
     const isNavbarVisible = useScrollDirection(scrollEl);
     const pathname = usePathname();
 
+    // La portada ya enseña esas mismas cinco constelaciones a pantalla
+    // completa, y la franja de arriba es donde sale el nombre de la que se
+    // señala: repetir ahí el navbar sería enseñar el menú dos veces y
+    // taparlo. El menú hamburguesa sí se queda, que en móvil la portada no
+    // trae otra salida.
+    const isHome = pathname === '/';
+
     const handleOpenMobileMenu = () => setIsMobileMenuOpen(true);
     const handleCloseMobileMenu = () => setIsMobileMenuOpen(false);
 
@@ -26,7 +33,7 @@ export default function AppLayout({children,}: {children: ReactNode}) {
         <div className="h-dvh bg-black relative overflow-hidden">
             <StarBackground />
 
-            <DesktopNavbar menuItems={MENU_ITEMS} isVisible={isNavbarVisible} />
+            {!isHome && <DesktopNavbar menuItems={MENU_ITEMS} isVisible={isNavbarVisible} />}
 
             <MobileMenu
             menuItems={MENU_ITEMS}
