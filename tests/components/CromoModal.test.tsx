@@ -14,13 +14,30 @@
 
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, createEvent, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+// Se dejan pasar las props que sí son de <img> —incluidas draggable y
+// onContextMenu, que son las que protegen la imagen a color— y se filtran
+// las propias de next/image, que en un <img> suelto solo darían warnings.
 vi.mock("next/image", () => ({
   default: (props: Record<string, unknown>) => {
-    const { src, alt } = props as { src: string; alt: string };
-    return <img src={src} alt={alt} />;
+    const { src, alt, className, draggable, onContextMenu } = props as {
+      src: string;
+      alt: string;
+      className?: string;
+      draggable?: boolean;
+      onContextMenu?: (e: React.MouseEvent) => void;
+    };
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className={className}
+        draggable={draggable}
+        onContextMenu={onContextMenu}
+      />
+    );
   },
 }));
 // CornerButton no tiene dependencias problemáticas, lo dejamos real.
@@ -178,5 +195,37 @@ describe("CromoModal · ownership state controla qué se muestra", () => {
     render(<CromoModal cromo={locked} onClose={vi.fn()} />);
     expect(screen.getByRole("heading", { name: "Bloqueado" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Test Cromo" })).not.toBeInTheDocument();
+  });
+});
+
+
+describe("CromoModal · imagen de un cromo que no se tiene", () => {
+  // El gris es un filtro CSS sobre la imagen buena: arrastrarla fuera o
+  // abrirla con el botón derecho la devolvía a todo color.
+  it("no se puede arrastrar ni abrir con el botón derecho", () => {
+    render(
+      <CromoModal
+        cromo={{ ...baseCromo, ownershipState: "never_owned", userOwnedUniques: [] }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const img = screen.getByAltText("Test Cromo");
+    expect(img).toHaveAttribute("draggable", "false");
+
+    const menu = createEvent.contextMenu(img);
+    fireEvent(img, menu);
+    expect(menu.defaultPrevented).toBe(true);
+  });
+
+  it("el cromo propio se puede arrastrar y abrir con el botón derecho", () => {
+    render(<CromoModal cromo={baseCromo} onClose={vi.fn()} />);
+
+    const img = screen.getByAltText("Test Cromo");
+    expect(img).toHaveAttribute("draggable", "true");
+
+    const menu = createEvent.contextMenu(img);
+    fireEvent(img, menu);
+    expect(menu.defaultPrevented).toBe(false);
   });
 });

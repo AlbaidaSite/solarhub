@@ -224,16 +224,33 @@ export async function cancelTradeAction(tradeId: number): Promise<TradeActionRes
   if (!auth.ok) return auth;
   const { supabase, userId } = auth;
 
-  // Verificar que el usuario es parte del trade
+  // El SELECT ya lo acota RLS a participantes y staff. Queda decidir
+  // quién puede BORRAR, que es el mismo criterio de la política
+  // trade_delete_participant: los dos participantes, y staff. Antes se
+  // filtraba aquí por participante, así que staff se quedaba fuera.
   const { data: trade } = await supabase
     .from("trade")
-    .select("id")
+    .select("id, initiator_id, recipient_id")
     .eq("id", tradeId)
-    .or(`initiator_id.eq.${userId},recipient_id.eq.${userId}`)
-    .maybeSingle();
+    .maybeSingle<{ id: number; initiator_id: string; recipient_id: string }>();
   if (!trade) return { ok: false, error: "Intercambio no encontrado." };
 
-  const { error } = await supabase.from("trade").delete().eq("id", tradeId);
+  if (trade.initiator_id !== userId && trade.recipient_id !== userId) {
+    const { data: isStaff } = await supabase.rpc("is_staff");
+    if (!isStaff) {
+      return { ok: false, error: "Sin permiso para eliminar este intercambio." };
+    }
+  }
+
+  const { data: deleted, error } = await supabase
+    .from("trade")
+    .delete()
+    .eq("id", tradeId)
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if (!deleted || deleted.length === 0) {
+    return { ok: false, error: "No se ha podido eliminar el intercambio." };
+  }
+
   return { ok: true };
 }

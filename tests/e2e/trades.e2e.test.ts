@@ -13,6 +13,7 @@ import {
   createAdminClient,
   createTestCromo,
   createTestUser,
+  createUserClient,
   setCurrentOwner,
   supabaseUp,
   supabaseDownReason,
@@ -47,6 +48,63 @@ async function openTrade(initiatorId: string, recipientId: string) {
 describe.skipIf(!supabaseUp)(
   `Trades (E2E)${supabaseDownReason ? ` · skipped (${supabaseDownReason})` : ""}`,
   () => {
+    // RLS de borrado (20260818120000_trade_delete_policy.sql). trade tenía
+    // RLS activado y solo política de SELECT, así que el DELETE no borraba
+    // nada — y sin error, porque un DELETE que no encaja con ninguna
+    // política afecta a 0 filas y ya está: el intercambio reaparecía al
+    // recargar.
+    it("RF-021 · un participante puede borrar su intercambio; un extraño no", async () => {
+      const initiator = await createTestUser();
+      const recipient = await createTestUser();
+      const stranger = await createTestUser();
+      const admin = createAdminClient();
+
+      const mine = await openTrade(initiator.id, recipient.id);
+      const strangerClient = await createUserClient(stranger.email, stranger.password);
+      const { data: notDeleted } = await strangerClient
+        .from("trade")
+        .delete()
+        .eq("id", mine.tradeId)
+        .select("id");
+      expect(notDeleted ?? []).toEqual([]);
+
+      const stillThere = await admin.from("trade").select("id").eq("id", mine.tradeId);
+      expect(stillThere.data).toEqual([{ id: mine.tradeId }]);
+
+      const initiatorClient = await createUserClient(initiator.email, initiator.password);
+      const { data: deleted, error } = await initiatorClient
+        .from("trade")
+        .delete()
+        .eq("id", mine.tradeId)
+        .select("id");
+      expect(error).toBeNull();
+      expect(deleted).toEqual([{ id: mine.tradeId }]);
+
+      // trade_offer cuelga de trade con on delete cascade.
+      const offers = await admin.from("trade_offer").select("id").eq("trade_id", mine.tradeId);
+      expect(offers.data).toEqual([]);
+    });
+
+    it("RF-021 · staff puede borrar un intercambio ajeno", async () => {
+      const initiator = await createTestUser();
+      const recipient = await createTestUser();
+      const staff = await createTestUser({ isStaff: true });
+      const admin = createAdminClient();
+
+      const trade = await openTrade(initiator.id, recipient.id);
+      const staffClient = await createUserClient(staff.email, staff.password);
+      const { data: deleted, error } = await staffClient
+        .from("trade")
+        .delete()
+        .eq("id", trade.tradeId)
+        .select("id");
+
+      expect(error).toBeNull();
+      expect(deleted).toEqual([{ id: trade.tradeId }]);
+      const gone = await admin.from("trade").select("id").eq("id", trade.tradeId);
+      expect(gone.data).toEqual([]);
+    });
+
     it("RN-014 · CHECK de Postgres rechaza un trade consigo mismo", async () => {
       const admin = createAdminClient();
       const user = await createTestUser();
