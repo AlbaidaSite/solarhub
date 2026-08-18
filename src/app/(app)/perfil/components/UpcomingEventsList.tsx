@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toggleEventInterestAction } from "@/app/(app)/eventos/actions";
 import EventListRow from "@/app/(app)/eventos/components/EventListRow";
 import type { EventOccurrence } from "@/types/events";
+import DayGroupBox, { groupByDay } from "./DayGroupBox";
 
 interface UpcomingEventsListProps {
   initialEvents: EventOccurrence[];
@@ -31,6 +32,8 @@ function monthLabel(occurrenceDate: string): string {
 // del día en móvil (EventListModal.tsx) — misma fila, mismo botón de
 // interés — con la fecha añadida a la izquierda porque aquí, a
 // diferencia de ahí, no hay una cabecera de día que ya la dé por sabida.
+// Los eventos que caen el mismo día comparten recuadro (DayGroupBox.tsx),
+// para no repetir esa fecha una vez por fila.
 export default function UpcomingEventsList({ initialEvents }: UpcomingEventsListProps) {
   const router = useRouter();
   const [events, setEvents] = useState(initialEvents);
@@ -74,30 +77,36 @@ export default function UpcomingEventsList({ initialEvents }: UpcomingEventsList
     return <p className="text-white/50 text-sm">No hay eventos marcados con interés.</p>;
   }
 
+  const days = groupByDay(events, (occurrence) => occurrence.occurrenceDate);
+
   return (
     <ul className="flex w-full max-h-[60vh] flex-col gap-2 overflow-y-auto scrollbar-clean pr-1">
-      {events.map((occurrence, index) => {
+      {days.map((group, index) => {
         // Cabecera de mes solo al entrar en un mes nuevo — si un mes no
         // tiene eventos, sencillamente no hay ningún occurrence con esa
         // monthKey y su nombre nunca se genera (no se itera un calendario
         // fijo de 12 meses, solo los datos que hay).
-        const showMonthHeader = index === 0 || monthKey(occurrence.occurrenceDate) !== monthKey(events[index - 1].occurrenceDate);
+        const showMonthHeader = index === 0 || monthKey(group.day) !== monthKey(days[index - 1].day);
         return (
-          <Fragment key={occurrence.id}>
+          <Fragment key={group.day}>
             {showMonthHeader && (
               <li className="px-1 pt-2 text-sm font-semibold text-white/70 first:pt-0">
-                {monthLabel(occurrence.occurrenceDate)}
+                {monthLabel(group.day)}
               </li>
             )}
             <li>
-              <EventListRow
-                occurrence={occurrence}
-                onSelect={handleSelect}
-                onToggleInterest={handleToggleInterest}
-                isInterestPending={pendingIds.has(occurrence.id)}
-                showDateBadge
-                lighterBorder
-              />
+              <DayGroupBox day={group.day}>
+                {group.items.map((occurrence) => (
+                  <EventListRow
+                    key={occurrence.id}
+                    occurrence={occurrence}
+                    onSelect={handleSelect}
+                    onToggleInterest={handleToggleInterest}
+                    isInterestPending={pendingIds.has(occurrence.id)}
+                    variant="grouped"
+                  />
+                ))}
+              </DayGroupBox>
             </li>
           </Fragment>
         );
