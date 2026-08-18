@@ -8,7 +8,15 @@ vi.mock("@/lib/supabase/actionAuth", () => ({
   requireUserActionClient: vi.fn(),
 }));
 
+// Las actions invalidan la caché del mapa al terminar; fuera de una
+// petición de Next, revalidatePath lanza ("static generation store
+// missing"), así que se sustituye por un espía.
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
 import { requireUserActionClient } from "@/lib/supabase/actionAuth";
+import { revalidatePath } from "next/cache";
 import {
   createPinAction,
   updatePinAction,
@@ -61,6 +69,10 @@ describe("RF-024 · publicar pin", () => {
 
     const result = await createPinAction(validData);
     expect(result).toEqual({ ok: true, pinId: 42 });
+    // El mapa se invalida aquí y no con un router.refresh() en el cliente:
+    // lanzado junto al router.push() cancelaba la navegación y dejaba el
+    // formulario colgado con el pin ya guardado.
+    expect(revalidatePath).toHaveBeenCalledWith("/mapa");
   });
 
   it("usuario no autenticado: rechazado sin tocar la tabla pin", async () => {

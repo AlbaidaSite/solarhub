@@ -151,7 +151,7 @@ export default function PlantInfoSection({
           {/* Etiqueta y meses en un solo nodo de texto, sin partirlo en
               varios <span>: es una frase, y así se lee (y se busca) como
               tal. */}
-          <p className="text-sm text-white/60">
+          <p className="text-lg text-white/70">
             {`${text.monthsLabel}: ${formatMonthList(current.months) || "sin definir"}`}
           </p>
         </>

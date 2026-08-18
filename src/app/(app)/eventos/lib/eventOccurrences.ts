@@ -1,5 +1,6 @@
 import type { EventOccurrence } from "@/types/events";
 import { isBirthday } from "@/types/events";
+import { madridIsoDate } from "./formatting";
 
 const MAX_VISIBLE_DOTS = 6;
 
@@ -53,4 +54,28 @@ export function getDesktopDotSequence(dayOccurrences: EventOccurrence[]): DotSeq
 // claridad de nombre en el punto de uso.
 export function getMobileDotSequence(dayOccurrences: EventOccurrence[]): DotSequence {
   return buildDotSequence(dayOccurrences.filter((o) => !isBirthday(o)));
+}
+
+// ─── Eventos ya pasados ──────────────────────────────────────────────────────
+// Un evento "pasado" es el que ya terminó y no volverá: hoy eso es todo lo
+// que no sea un cumpleaños, porque la recurrencia YEARLY solo se pone en
+// eventos de tipo cumpleaños (ver `recurrence: isBirthdayType ? ...` en
+// NewEventForm/EditEventForm). Un cumpleaños se repite cada año, así que
+// nunca queda atrás por mucho que se mire una ocurrencia antigua.
+
+// Último día que ocupa la ocurrencia, en Europe/Madrid. En un evento anual
+// end_date guarda el año ORIGINAL (ver types/events.ts), así que solo se
+// tiene en cuenta cuando cae DESPUÉS del día de la ocurrencia; si no, manda
+// occurrenceDate, que ya viene proyectado.
+export function lastDayOfOccurrence(occurrence: EventOccurrence): string {
+  const endDay = occurrence.endDate ? madridIsoDate(occurrence.endDate) : null;
+  return endDay && endDay > occurrence.occurrenceDate ? endDay : occurrence.occurrenceDate;
+}
+
+// `today` se pasa como argumento (yyyy-MM-dd, ver todayInMadrid) en vez de
+// leerlo dentro: así la función es pura y los tests no dependen del reloj.
+// Lo de hoy NO es pasado: un evento sigue siendo del día hasta que acaba.
+export function isPastOccurrence(occurrence: EventOccurrence, today: string): boolean {
+  if (isBirthday(occurrence)) return false;
+  return lastDayOfOccurrence(occurrence) < today;
 }

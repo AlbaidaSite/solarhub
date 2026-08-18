@@ -17,7 +17,7 @@ export default function ProfilePanels({ upcomingEvents }: ProfilePanelsProps) {
     <div className="relative w-full flex flex-col md:flex-row md:items-stretch min-h-96">
       <div className="md:hidden w-full flex items-center justify-center gap-5 mb-8">
         <TabButton active={panel === "eventos"} onClick={() => setPanel("eventos")}>
-          Eventos pendientes
+          Próximos Eventos
         </TabButton>
         <span aria-hidden className="text-zinc-600 text-xl">/</span>
         <TabButton active={panel === "historial"} onClick={() => setPanel("historial")}>
@@ -27,7 +27,7 @@ export default function ProfilePanels({ upcomingEvents }: ProfilePanelsProps) {
 
       <PanelSection visible={panel === "eventos"} side="left">
         <h2 className="hidden md:block text-2xl font-bold text-white text-center mb-4">
-          Eventos pendientes
+          Próximos Eventos
         </h2>
         <UpcomingEventsList initialEvents={upcomingEvents} />
       </PanelSection>

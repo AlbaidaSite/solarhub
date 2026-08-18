@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ImageIcon } from "lucide-react";
@@ -26,7 +26,14 @@ export default function StickerForm({
   submitLabel,
 }: StickerFormProps) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  // Un estado normal y no useTransition: dentro de una transición, el
+  // router.push() del final la mantiene pendiente hasta que la vista de
+  // destino termina de renderizarse, y si esa navegación se atasca el
+  // botón se queda en "Guardando…" para siempre con el sticker ya
+  // guardado. Aquí el pendiente cubre solo la llamada al servidor, y sigue
+  // puesto al navegar (no se reinicia en el camino de éxito) para que no
+  // se pueda enviar dos veces.
+  const [isPending, setIsPending] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -36,7 +43,7 @@ export default function StickerForm({
     setPreviewUrl(file ? URL.createObjectURL(file) : null);
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFormError(null);
 
@@ -49,14 +56,14 @@ export default function StickerForm({
     }
 
     const fd = new FormData(e.currentTarget);
-    startTransition(async () => {
-      const result = await action(fd);
-      if (result.ok) {
-        router.push("/staff/mapa");
-      } else {
-        setFormError(result.error);
-      }
-    });
+    setIsPending(true);
+    const result = await action(fd);
+    if (!result.ok) {
+      setFormError(result.error);
+      setIsPending(false);
+      return;
+    }
+    router.push("/staff/mapa");
   };
 
   const displayIcon = previewUrl ?? existingIconUrl;
@@ -88,7 +95,7 @@ export default function StickerForm({
           role="button"
           tabIndex={0}
           onKeyDown={(e) => e.key === "Enter" && fileRef.current?.click()}
-          aria-label="Seleccionar imagen"
+          aria-label={displayIcon ? "Cambiar imagen" : "Seleccionar imagen"}
         >
           {displayIcon ? (
             <div className="relative w-full h-full">
@@ -113,14 +120,6 @@ export default function StickerForm({
           className="hidden"
           onChange={handleFileChange}
         />
-
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="self-start text-xs text-amber-300 hover:text-amber-200 transition-colors cursor-pointer"
-        >
-          {displayIcon ? "Cambiar imagen" : "Seleccionar imagen"}
-        </button>
       </div>
 
       {formError && (

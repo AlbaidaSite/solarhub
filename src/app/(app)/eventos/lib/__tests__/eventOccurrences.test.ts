@@ -5,6 +5,8 @@ import {
   getDefaultOccurrence,
   getDesktopDotSequence,
   getMobileDotSequence,
+  isPastOccurrence,
+  lastDayOfOccurrence,
 } from "../eventOccurrences";
 
 let nextId = 1;
@@ -129,5 +131,54 @@ describe("secuencia de puntos de móvil", () => {
     const { visible, overflowCount } = getMobileDotSequence([birthday]);
     expect(visible).toHaveLength(0);
     expect(overflowCount).toBe(0);
+  });
+});
+
+
+describe("lastDayOfOccurrence", () => {
+  it("sin fecha de fin, el último día es el de la ocurrencia", () => {
+    expect(lastDayOfOccurrence(makeOccurrence("2026-08-18"))).toBe("2026-08-18");
+  });
+
+  it("con fecha de fin posterior, manda esa", () => {
+    const occurrence = makeOccurrence("2026-08-18", { endDate: "2026-08-20T18:00:00Z" });
+    expect(lastDayOfOccurrence(occurrence)).toBe("2026-08-20");
+  });
+
+  // En un evento anual end_date conserva el año original (1990 en un
+  // cumpleaños), así que tomarla al pie de la letra dejaría el último día
+  // décadas antes que la propia ocurrencia.
+  it("una fecha de fin anterior a la ocurrencia se ignora", () => {
+    const occurrence = makeOccurrence("2026-03-04", { endDate: "1990-03-04T23:00:00Z" });
+    expect(lastDayOfOccurrence(occurrence)).toBe("2026-03-04");
+  });
+});
+
+describe("isPastOccurrence", () => {
+  const today = "2026-08-18";
+
+  it("lo de ayer ya pasó", () => {
+    expect(isPastOccurrence(makeOccurrence("2026-08-17"), today)).toBe(true);
+  });
+
+  // Un evento de hoy todavía está por delante: se puede marcar interés
+  // hasta que termina el día.
+  it("lo de hoy no ha pasado", () => {
+    expect(isPastOccurrence(makeOccurrence(today), today)).toBe(false);
+  });
+
+  it("lo de mañana tampoco", () => {
+    expect(isPastOccurrence(makeOccurrence("2026-08-19"), today)).toBe(false);
+  });
+
+  it("un evento de varios días sigue vivo mientras no acabe", () => {
+    const occurrence = makeOccurrence("2026-08-15", { endDate: "2026-08-19T20:00:00Z" });
+    expect(isPastOccurrence(occurrence, today)).toBe(false);
+  });
+
+  // Los cumpleaños son la única recurrencia del sistema (YEARLY): vuelven
+  // cada año, así que ninguna ocurrencia suya cuenta como pasada.
+  it("un cumpleaños de hace meses no cuenta como pasado", () => {
+    expect(isPastOccurrence(makeBirthday("2026-03-04"), today)).toBe(false);
   });
 });

@@ -25,6 +25,7 @@ import {
   type CreateEventPrice,
   type EventEditDetail,
 } from "../../../actions";
+import { combineDateTime, isEndBeforeStart } from "../../../lib/eventDates";
 import MediaSection from "../../../../mapa/nueva/components/MediaSection";
 import type { MediaEntry } from "../../../../mapa/nueva/components/MediaSection";
 import { BIRTHDAY_EVENT_TYPE_CODE, type EventTypeInfo } from "@/types/events";
@@ -80,10 +81,6 @@ function isoToDateInput(iso: string): string {
 function isoToTimeInput(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-function combineDateTime(date: string, time: string | null): string {
-  return new Date(`${date}T${time || "00:00"}:00`).toISOString();
 }
 
 function mimeToExt(blob: Blob, originalName: string): string {
@@ -278,7 +275,14 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
     if (!place.trim()) { setSubmitError("El lugar es obligatorio"); return; }
     if (!eventTypeId) { setSubmitError("Selecciona un tipo de evento"); return; }
     if (!startDate) { setSubmitError("La fecha de inicio es obligatoria"); return; }
-    if (endDate && endDate < startDate) {
+    // Se comparan los instantes completos —fecha Y hora—, que es justo lo
+    // que revalida el servidor. Comparando solo las fechas, un evento que
+    // termina el mismo día a una hora anterior pasaba este filtro y volvía
+    // rechazado desde el servidor con ESTE mismo mensaje: parecía que el
+    // aviso se hubiera quedado pegado después de corregir las fechas.
+    const startInstant = combineDateTime(startDate, startTime || null);
+    const endInstant = endDate ? combineDateTime(endDate, endTime || null) : null;
+    if (isEndBeforeStart(startInstant, endInstant)) {
       setSubmitError("La fecha de fin no puede ser anterior a la de inicio");
       return;
     }
@@ -302,9 +306,9 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
       title: title.trim(),
       place: place.trim(),
       eventTypeId,
-      eventDate: combineDateTime(startDate, startTime || null),
+      eventDate: startInstant,
       startTimeIncluded: startTime.trim() !== "",
-      endDate: endDate ? combineDateTime(endDate, endTime || null) : null,
+      endDate: endInstant,
       endTimeIncluded: endDate ? endTime.trim() !== "" : true,
       description: description.trim() || null,
       url: url.trim() || null,
@@ -321,8 +325,11 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
     }
 
     if (readyEntries.length === 0) {
+      // Sin router.refresh() al lado: lanzado en paralelo al push cancela
+      // la navegación y deja el formulario "guardando" para siempre, con
+      // los datos ya guardados. La caché del destino la invalida
+      // revalidatePath() dentro de la action (ver eventos/actions.ts).
       router.push("/eventos");
-      router.refresh();
       return;
     }
 
@@ -332,7 +339,6 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
     if (failures.length === 0) {
       router.push("/eventos");
-      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -354,7 +360,6 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
     if (failures.length === 0) {
       router.push("/eventos");
-      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -417,7 +422,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
               </CornerButton>
               <button
                 type="button"
-                onClick={() => { router.push("/eventos"); router.refresh(); }}
+                onClick={() => { router.push("/eventos"); }}
                 className="text-sm text-white/50 hover:text-white transition-colors self-start cursor-pointer"
               >
                 Continuar sin esas fotos
@@ -447,7 +452,11 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
       <h1 className="text-3xl font-bold text-white mb-8">Editar evento</h1>
 
-      <form onSubmit={handleSubmit} className="w-full max-w-lg flex flex-col gap-8">
+      <form
+        onSubmit={handleSubmit}
+        onChange={() => setSubmitError(null)}
+        className="w-full max-w-lg flex flex-col gap-8"
+      >
 
         {/* Título */}
         <div className="flex flex-col gap-1">
@@ -709,7 +718,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
                 onChange={(e) => setHideExternal(e.target.checked)}
                 className="w-4 h-4 accent-amber-300 cursor-pointer"
               />
-              Ocultar a externos
+              Mostrar solo a Loukous
             </label>
           )}
         </div>

@@ -285,7 +285,7 @@ export default function PinModal({ detail, onClose, onDelete }: PinModalProps) {
           </div>
 
           <div className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider text-white/50">Fecha</span>
+            <span className="text-xs uppercase tracking-wider text-white/50">Fecha en la que se colocó</span>
             <p className="text-base text-white">
               {new Date(pin.created_at).toLocaleDateString("es-ES", {
                 day: "2-digit",

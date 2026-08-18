@@ -367,19 +367,13 @@ export default function MediaSection({
         disabled={disabled || atMax}
       />
 
-      {/* Counter + add button */}
-      <div className="flex items-center justify-between mt-2">
+      {/* Contador. Sin botón de añadir al lado: la zona de arriba ya abre
+          el selector y es mejor sitio donde pulsar — ocupa todo el ancho,
+          admite arrastrar y soltar, y se alcanza con el teclado. */}
+      <div className="mt-2">
         <span className="text-xs text-white/40">
           {entries.length}/{maxFiles} {photosOnly ? "fotos" : "archivos"}
         </span>
-        <button
-          type="button"
-          onClick={openPicker}
-          disabled={disabled || atMax}
-          className="text-xs text-amber-300 hover:text-amber-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-        >
-          + Añadir {photosOnly ? "foto" : "archivo"}
-        </button>
       </div>
 
       {/* File grid */}

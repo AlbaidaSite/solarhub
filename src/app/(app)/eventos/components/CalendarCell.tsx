@@ -64,7 +64,7 @@ export default function CalendarCell({
   // lenguaje visual queda libre para otro uso futuro.
   const cellBorderClass = visibleOccurrence
     ? eventTypeClasses(visibleOccurrence.eventType.color).badgeBorder
-    : "border-white";
+    : "border-black";
 
   const desktopDots = getDesktopDotSequence(occurrences);
   const mobileDots = getMobileDotSequence(occurrences);
@@ -100,7 +100,7 @@ export default function CalendarCell({
             }}
           >
             <EventImageLayer occurrences={nonBirthdays} visibleEventId={visibleEventId} />
-            <div className="absolute inset-0 bg-black/20" />
+            <div className="absolute inset-0" />
           </div>
           {/* isolate: contexto de apilamiento propio para este contenedor,
               así el z-index de sus hijos no se compara contra el velo de
@@ -135,9 +135,9 @@ export default function CalendarCell({
                       }
                     : undefined
                 }
-                className={`absolute top-1/2 left-1/2 z-10 h-5 w-5 -translate-y-1/2 ${
+                className={`absolute top-1/2 left-1/2 z-10 h-7 w-7 -translate-y-1/2 ${
                   isSelectedDay
-                    ? "pointer-events-auto cursor-pointer translate-x-[calc(-50%+28px)] text-white transition-all duration-300"
+                    ? "pointer-events-auto cursor-pointer translate-x-[calc(-50%+38px)] text-white transition-all duration-300"
                     : "pointer-events-none -translate-x-1/2 text-black transition-none"
                 }`}
               />
@@ -148,7 +148,7 @@ export default function CalendarCell({
               // de texto sola no bastaba para que el número siguiera
               // siendo legible. isToday sigue con su propio tratamiento
               // (círculo blanco) porque ya garantiza contraste de sobra.
-              className={`relative z-20 flex h-6 w-6 items-center justify-center rounded-full text-sm font-semibold ${
+              className={`relative z-20 flex h-9 w-9 items-center justify-center rounded-full text-xl font-semibold ${
                 isToday ? "bg-white/80 text-black" : "bg-black/80 text-white"
               } ${isSelectedDay ? "border-2 border-white" : ""}`}
             >

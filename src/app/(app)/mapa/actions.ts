@@ -1,9 +1,15 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUserActionClient } from "@/lib/supabase/actionAuth";
 import { getStorageUrl, STORAGE_BUCKET } from "@/lib/supabase/storage";
 import type { Pin, Sticker, PinDetail, MapMedia } from "@/types/map";
+
+// Vista que queda desfasada al crear, editar o borrar un pin. La invalida
+// la propia action: si lo hiciera el cliente con router.refresh() junto al
+// router.push(), la navegación se cancelaría (ver CromoEditForm.tsx).
+const MAP_PATH = "/mapa";
 
 type ServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
@@ -252,6 +258,7 @@ export async function createPinAction(data: CreatePinData): Promise<CreatePinRes
   if (insertError || !inserted) {
     return { ok: false, error: insertError?.message ?? "Error al guardar" };
   }
+  revalidatePath(MAP_PATH);
   return { ok: true, pinId: inserted.id };
 }
 
@@ -283,6 +290,8 @@ export async function updatePinAction(
     .eq("id", pinId);
 
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath(MAP_PATH);
   return { ok: true };
 }
 
@@ -338,6 +347,8 @@ export async function deletePinAction(pinId: number): Promise<MapActionResult> {
 
   const { error } = await supabase.from("pin").delete().eq("id", pinId);
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath(MAP_PATH);
   return { ok: true };
 }
 

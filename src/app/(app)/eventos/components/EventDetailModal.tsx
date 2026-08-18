@@ -14,7 +14,14 @@ import {
   getEventPricesAction,
   toggleEventInterestAction,
 } from "../actions";
-import { formatEventDateOnly, formatEventEndDate, formatEventPrice, formatEventTime } from "../lib/formatting";
+import {
+  formatEventDateOnly,
+  formatEventEndDate,
+  formatEventPrice,
+  formatEventTime,
+  todayInMadrid,
+} from "../lib/formatting";
+import { isPastOccurrence } from "../lib/eventOccurrences";
 
 interface EventDetailModalProps {
   occurrence: EventOccurrence;
@@ -200,6 +207,11 @@ export default function EventDetailModal({
     });
   };
 
+  // Un evento que ya pasó no admite interés (lo rechaza también
+  // toggleEventInterestAction): en vez de una campana que no responde, no
+  // hay campana. Los cumpleaños no entran aquí, se repiten cada año.
+  const isPast = isPastOccurrence(occurrence, todayInMadrid());
+
   // Mostrar interés — cualquier autenticado, sin relación con canEdit.
   // Anclada a la esquina superior IZQUIERDA de la imagen (editar/eliminar
   // ocupan la derecha), mismo círculo negro que esos botones pero algo
@@ -207,7 +219,7 @@ export default function EventDetailModal({
   // sin quedar apretado. Blanco/80 en reposo, blanco puro en hover,
   // amarillo cuando ya hay interés marcado (y blanco en hover también en
   // ese estado).
-  const interestButton = (
+  const interestButton = isPast ? null : (
     <button
       type="button"
       onClick={(e) => {

@@ -8,7 +8,7 @@
 --     formulario permite fecha sin hora (se guarda medianoche
 --     Europe/Madrid como valor neutro y el flag le dice a la UI si esa
 --     hora es real o solo un placeholder)
---   - "ocultar a externos" (hide_external)
+--   - "Mostrar solo a Loukous" (hide_external)
 --   - tabla event_photo para las fotos adicionales (máx. 3 en total:
 --     la 1ª sigue guardándose en event.image_url, que ya existía y ya
 --     consume events_in_range/EventImageLayer/CalendarCell tal cual)
@@ -18,7 +18,7 @@ alter table public.event add column end_date timestamptz;
 alter table public.event add column start_time_included boolean not null default true;
 alter table public.event add column end_time_included boolean not null default true;
 
--- "Ocultar a externos": mismo patrón que cromo_labels.for_loukou (ver
+-- "Mostrar solo a Loukous": mismo patrón que cromo_labels.for_loukou (ver
 -- notas al final de 20260426160000_role_helpers.sql). Se guarda el flag
 -- ya, pero el enforcement en lectura (filtrar eventos ocultos en
 -- events_in_range para quien no sea is_loukou()/is_staff()) se deja

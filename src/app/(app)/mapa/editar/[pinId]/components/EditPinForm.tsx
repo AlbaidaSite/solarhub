@@ -285,7 +285,6 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
       if (readyEntries.length === 0) {
         router.push("/mapa");
-        router.refresh();
         return;
       }
 
@@ -294,7 +293,6 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
       if (failures.length === 0) {
         router.push("/mapa");
-        router.refresh();
       } else {
         setUploadFailures(failures);
         setSubmitPhase("partial_error");
@@ -321,7 +319,6 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
     if (failures.length === 0) {
       router.push("/mapa");
-      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -381,7 +378,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
               </CornerButton>
               <button
                 type="button"
-                onClick={() => { router.push("/mapa"); router.refresh(); }}
+                onClick={() => { router.push("/mapa"); }}
                 className="text-sm text-white/50 hover:text-white transition-colors self-start cursor-pointer"
               >
                 Continuar sin esos archivos
@@ -451,7 +448,33 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
           )}
         </fieldset>
 
-        {/* 2. Country combobox */}
+        {/* 2. Place */}
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-zinc-400">
+            Lugar donde se colocó <span className="text-red-400">*</span>
+          </label>
+          <AuroraField
+            type="text"
+            placeholder="Ej: Parque del Retiro"
+            value={place}
+            onChange={(e) => setPlace(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+
+        {/* 3. State (optional) */}
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-zinc-400">Ciudad</label>
+          <AuroraField
+            type="text"
+            placeholder="Ej: Sevilla"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+
+        {/* 4. Country combobox */}
         <div ref={countryWrapperRef} className="relative flex flex-col gap-1">
           <label className="text-sm font-medium text-zinc-400">
             País <span className="text-red-400">*</span>
@@ -486,32 +509,6 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
           )}
         </div>
 
-        {/* 3. State (optional) */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">Provincia</label>
-          <AuroraField
-            type="text"
-            placeholder="Ej: Sevilla"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
-
-        {/* 4. Place */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
-            Lugar <span className="text-red-400">*</span>
-          </label>
-          <AuroraField
-            type="text"
-            placeholder="Ej: Parque del Retiro"
-            value={place}
-            onChange={(e) => setPlace(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
-
         {/* 5. Coordinates */}
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-zinc-400">
@@ -542,7 +539,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
         {/* 6. Date */}
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-zinc-400">
-            Fecha <span className="text-red-400">*</span>
+            Fecha en la que se colocó <span className="text-red-400">*</span>
           </label>
           <AuroraField
             type="date"

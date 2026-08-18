@@ -14,8 +14,10 @@ import userEvent from "@testing-library/user-event";
 
 // Stub mínimo de next/navigation y next/image: ambos accederían a APIs
 // específicas de Next que no existen en jsdom.
+const routerPush = vi.fn();
+const routerRefresh = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: routerPush, refresh: routerRefresh, replace: vi.fn() }),
 }));
 vi.mock("next/image", () => ({
   default: (props: Record<string, unknown>) => {
@@ -129,5 +131,48 @@ describe("StickerForm · errores del servidor", () => {
     expect(err.textContent).toContain("Error A");
     expect(err.textContent).toContain("Error B");
     expect(err.className).toContain("whitespace-pre-line");
+  });
+});
+
+
+describe("StickerForm · redirección al guardar", () => {
+  // El bug: con el router.push() dentro de startTransition, el pendiente de
+  // la transición seguía abierto durante la navegación y el formulario se
+  // quedaba en "Guardando…" con el sticker ya guardado.
+  it("tras guardar correctamente navega al listado", async () => {
+    const action = vi.fn().mockResolvedValue({ ok: true });
+    render(
+      <StickerForm
+        action={action}
+        submitLabel="Guardar"
+        existingIconUrl="http://test/old.webp"
+        initial={{ name: "Old" }}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await vi.waitFor(() => expect(routerPush).toHaveBeenCalledWith("/staff/mapa"));
+    // router.refresh() en paralelo cancelaría esa navegación; la caché la
+    // invalida revalidatePath() dentro de la action.
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("si la action falla no navega y el botón vuelve a estar disponible", async () => {
+    const action = vi.fn().mockResolvedValue({ ok: false, error: "Vaya" });
+    render(
+      <StickerForm
+        action={action}
+        submitLabel="Guardar"
+        existingIconUrl="http://test/old.webp"
+        initial={{ name: "Old" }}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /guardar/i }));
+
+    expect(await screen.findByText("Vaya")).toBeInTheDocument();
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeEnabled();
   });
 });

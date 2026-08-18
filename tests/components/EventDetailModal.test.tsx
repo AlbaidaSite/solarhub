@@ -9,7 +9,7 @@
 // el enlace al portapapeles.
 
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { EventOccurrence } from "@/types/events";
@@ -186,5 +186,49 @@ describe("EventDetailModal · compartir", () => {
     expect(copiedUrl).toContain("evento=1");
     expect(copiedUrl).toContain("fecha=2026-06-15");
     expect(await screen.findByText("Enlace copiado")).toBeInTheDocument();
+  });
+});
+
+
+describe("EventDetailModal · interés en eventos pasados", () => {
+  // Solo se falsea Date: con los temporizadores de verdad falseados,
+  // userEvent se queda esperando para siempre.
+  const freezeToday = (iso: string) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(iso));
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("un evento que ya pasó no ofrece marcar interés", () => {
+    freezeToday("2026-06-16T09:00:00Z");
+    render(<EventDetailModal occurrence={baseOccurrence} onClose={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /interés/i })).not.toBeInTheDocument();
+  });
+
+  it("el mismo día del evento todavía se puede marcar", () => {
+    freezeToday("2026-06-15T09:00:00Z");
+    render(<EventDetailModal occurrence={baseOccurrence} onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Mostrar interés" })).toBeInTheDocument();
+  });
+
+  it("un evento por venir sí lo ofrece", () => {
+    freezeToday("2026-06-01T09:00:00Z");
+    render(<EventDetailModal occurrence={baseOccurrence} onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Mostrar interés" })).toBeInTheDocument();
+  });
+
+  // Mientras no termine sigue siendo un evento en curso, no uno pasado.
+  it("un evento de varios días aguanta hasta su último día", () => {
+    freezeToday("2026-06-17T09:00:00Z");
+    render(
+      <EventDetailModal
+        occurrence={{ ...baseOccurrence, endDate: "2026-06-18T20:00:00Z" }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Mostrar interés" })).toBeInTheDocument();
   });
 });

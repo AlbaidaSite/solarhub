@@ -53,3 +53,17 @@ export function formatEventTime(eventDateIso: string, timeIncluded: boolean): st
 export function formatEventPrice(amount: number): string {
   return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(amount);
 }
+
+// Día (yyyy-MM-dd) en el que cae un instante ISO visto desde Madrid. Es la
+// forma comparable de una fecha: sobre esa cadena, `<` ya ordena bien.
+export function madridIsoDate(iso: string): string {
+  const { year, month, day } = madridParts(iso);
+  return `${year}-${month}-${day}`;
+}
+
+// Hoy en Madrid, en el mismo formato. Sale de aquí y no de `new Date()`
+// del navegador para que "pasado" signifique lo mismo en el servidor
+// (Vercel corre en UTC) que en la pantalla de quien mira.
+export function todayInMadrid(): string {
+  return madridIsoDate(new Date().toISOString());
+}
