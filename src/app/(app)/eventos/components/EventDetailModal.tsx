@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useDialog, FocusScope } from "react-aria";
-import { ArrowLeft, BellOff, BellRing, Check, ChevronLeft, ChevronRight, ExternalLink, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Bell, BellRing, Check, ChevronLeft, ChevronRight, ExternalLink, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
 import { eventTypeClasses } from "@/lib/eventTypeClasses";
 import { isBirthday, type EventOccurrence, type EventPrice } from "@/types/events";
 import {
@@ -52,12 +52,20 @@ interface EventDetailModalProps {
 
 type DeleteStep = null | "confirm1" | "confirm2";
 
-// Flechas de navegación entre eventos del día: mismo chip negro que la
-// campana y los botones de editar/eliminar, pero centradas verticalmente
-// sobre la imagen — las cuatro esquinas ya están ocupadas. Solo cambia
-// left/right entre una y otra.
+// Flechas de navegación entre eventos del día: van en su propia fila,
+// FUERA de la imagen. Antes iban ancladas a los lados de la imagen, pero
+// cada evento trae una foto con proporciones distintas, así que la altura
+// de la imagen — y con ella el centro vertical donde caían las flechas —
+// cambiaba en cada salto y había que volver a buscarlas. En una fila
+// propia, entre el padding superior fijo del modal y la imagen, caen
+// siempre en el mismo punto de la pantalla.
 const DAY_NAV_ARROW_CLASS =
-  "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white/80 transition-colors hover:bg-black/80 hover:text-white";
+  "flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-amber-300";
+
+// Tope de altura de la foto de portada. La imagen intenta ocupar SIEMPRE
+// el ancho completo del modal; solo cuando a ese ancho se pasaría de este
+// alto manda el alto, y el ancho baja en proporción.
+const MAX_PHOTO_HEIGHT_PX = 670;
 
 // Un cumpleaños nunca debe llegar hasta aquí (ver BirthdayPills.tsx y
 // EventListModal.tsx: los cumpleaños no son clicables en ningún sitio).
@@ -86,6 +94,14 @@ export default function EventDetailModal({
   // resuelta en occurrence.imageUrl, sin esperar a esta petición.
   const [extraPhotos, setExtraPhotos] = useState<string[]>([]);
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
+  // Proporción natural (ancho/alto) de cada foto ya cargada, indexada por
+  // URL. Hace falta medirla en JS porque CSS solo no llega: un width:100%
+  // no es un tamaño "auto", así que un max-height que entre en juego
+  // recorta el alto sin tocar el ancho — deformando la foto, o dejando
+  // franjas si se compensa con object-contain. Guardarla por URL, en vez
+  // de resetearla en cada cambio de foto, evita volver a medir lo ya
+  // medido al pasear por el carrusel.
+  const [photoRatios, setPhotoRatios] = useState<Record<string, number>>({});
   const latestPhotosRequestIdRef = useRef<number | null>(null);
 
   // Permiso de edición/borrado: dueño del evento o staff. Se distinguen
@@ -181,6 +197,21 @@ export default function EventDetailModal({
   const allPhotos = occurrence.imageUrl ? [occurrence.imageUrl, ...extraPhotos] : extraPhotos;
   const activePhotoUrl = allPhotos[activePhotoIdx] ?? occurrence.imageUrl ?? null;
 
+  const activePhotoRatio = activePhotoUrl ? photoRatios[activePhotoUrl] ?? null : null;
+
+  // naturalWidth/naturalHeight valen 0 si la carga falló: sin el guardia
+  // se guardaría un 0 (o un NaN) como proporción y la imagen se quedaría
+  // sin ancho.
+  const handlePhotoLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth, naturalHeight } = e.currentTarget;
+    if (!naturalWidth || !naturalHeight) return;
+    const url = activePhotoUrl;
+    if (!url) return;
+    setPhotoRatios((prev) =>
+      prev[url] != null ? prev : { ...prev, [url]: naturalWidth / naturalHeight },
+    );
+  };
+
   const classes = eventTypeClasses(occurrence.eventType.color);
   const dateLabel = formatEventDateOnly(occurrence.occurrenceDate);
   const timeLabel = formatEventTime(occurrence.eventDate, occurrence.startTimeIncluded);
@@ -247,7 +278,7 @@ export default function EventDetailModal({
   };
 
   const dayNavArrows = canNavigateDay ? (
-    <>
+    <div className="flex shrink-0 items-center justify-between gap-3">
       <button
         type="button"
         onClick={(e) => {
@@ -256,7 +287,7 @@ export default function EventDetailModal({
         }}
         aria-label="Evento anterior de este día"
         title="Evento anterior de este día"
-        className={DAY_NAV_ARROW_CLASS + " left-3"}
+        className={DAY_NAV_ARROW_CLASS}
       >
         <ChevronLeft size={24} />
       </button>
@@ -268,36 +299,35 @@ export default function EventDetailModal({
         }}
         aria-label="Evento siguiente de este día"
         title="Evento siguiente de este día"
-        className={DAY_NAV_ARROW_CLASS + " right-3"}
+        className={DAY_NAV_ARROW_CLASS}
       >
         <ChevronRight size={24} />
       </button>
-    </>
+    </div>
   ) : null;
 
   // Mostrar interés — cualquier autenticado, sin relación con canEdit.
-  // Anclada a la esquina superior IZQUIERDA de la imagen (editar/eliminar
-  // ocupan la derecha), mismo círculo negro que esos botones pero algo
-  // más grande (w-10 en vez de w-9) para que quepa un icono más grande
-  // sin quedar apretado. Blanco/80 en reposo, blanco puro en hover,
-  // amarillo cuando ya hay interés marcado (y blanco en hover también en
-  // ese estado).
+  // Ya no es un icono suelto flotando sobre la imagen, sino un recuadro
+  // rotulado ("Recordar" + campana) al final de la línea de la fecha de
+  // inicio: ahí se lee qué hace sin tener que deducirlo del icono, y no
+  // depende de las proporciones de la foto. En ámbar cuando el interés ya
+  // está marcado, y ahí la campana suena (BellRing).
   const interestButton = isPast ? null : (
     <button
       type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        handleToggleInterest();
-      }}
+      onClick={handleToggleInterest}
       disabled={isInterestPending}
       aria-label={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
       aria-pressed={occurrence.liked}
       title={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
-      className={`absolute top-3 left-3 z-10 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-50 ${
-        occurrence.liked ? "text-yellow-400 hover:text-white" : "text-white/80 hover:text-white"
+      className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-4 py-2 text-base font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
+        occurrence.liked
+          ? "border-amber-300/60 bg-amber-300/15 text-amber-200 hover:bg-amber-300/25"
+          : "border-white/20 bg-white/5 text-white/80 hover:border-white/40 hover:text-white"
       }`}
     >
-      {occurrence.liked ? <BellRing size={24} /> : <BellOff size={24} />}
+      Recordar
+      {occurrence.liked ? <BellRing size={20} /> : <Bell size={20} />}
     </button>
   );
 
@@ -429,24 +459,35 @@ export default function EventDetailModal({
             </div>
           )}
 
-          {/* Imagen o tesela de tipo: si hay foto, se muestra a tamaño
-              intrínseco (limitada por ancho Y alto, lo que llegue antes)
-              en vez de forzar un aspect-ratio panorámico fijo — así una
-              foto vertical no queda aplastada en una caja horizontal.
+          {/* Navegación entre los eventos del día: fila propia y fija,
+              antes de la imagen, para que no se mueva de sitio por mucho
+              que cambie el alto de la foto de cada evento. */}
+          {dayNavArrows}
+
+          {/* Imagen o tesela de tipo. La foto ocupa todo el ancho del
+              modal salvo que a ese ancho fuese a pasar de
+              MAX_PHOTO_HEIGHT_PX de alto: entonces manda el alto y el
+              ancho baja en proporción (nunca se deforma ni se recorta).
               Editar/eliminar van anclados a la esquina superior derecha
               de la IMAGEN, no del modal. */}
           <div className="w-full flex justify-center shrink-0">
             {activePhotoUrl ? (
-              <div className="relative inline-block max-w-full">
-                {/* eslint-disable-next-line @next/next/no-img-element -- tamaño intrínseco: next/image "fill" exige un contenedor con tamaño ya fijado, justo lo contrario de lo que hace falta aquí. */}
+              <div
+                className="relative w-full"
+                style={
+                  activePhotoRatio != null
+                    ? { maxWidth: `${MAX_PHOTO_HEIGHT_PX * activePhotoRatio}px` }
+                    : undefined
+                }
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- next/image "fill" exige un contenedor con tamaño ya fijado, justo lo contrario de lo que hace falta aquí. */}
                 <img
                   src={activePhotoUrl}
                   alt={occurrence.title}
-                  className="max-w-full max-h-[42rem] w-auto h-auto rounded-xl border border-white/10 object-contain bg-zinc-900"
+                  onLoad={handlePhotoLoad}
+                  className="w-full h-auto max-h-[670px] rounded-xl border border-white/10 object-contain bg-zinc-900"
                 />
-                {interestButton}
                 {editDeleteButtons}
-                {dayNavArrows}
               </div>
             ) : (
               <div
@@ -462,9 +503,7 @@ export default function EventDetailModal({
                     unoptimized
                   />
                 </div>
-                {interestButton}
                 {editDeleteButtons}
-                {dayNavArrows}
               </div>
             )}
           </div>
@@ -499,11 +538,16 @@ export default function EventDetailModal({
           <div className="flex flex-col gap-1 text-white">
             {/* Hora en su propio span con margen izquierdo (no solo un
                 espacio suelto en el string): separación visual real
-                respecto a la fecha, más grande que antes. */}
-            <p className="flex items-baseline text-2xl font-semibold">
-              <span>{dateLabel}</span>
-              {timeLabel && <span className="ml-4 text-lg font-normal text-white/70">{timeLabel}</span>}
-            </p>
+                respecto a la fecha, más grande que antes. El recuadro de
+                "Recordar" comparte línea con la fecha de inicio, pegado
+                al extremo derecho. */}
+            <div className="flex items-center justify-between gap-4">
+              <p className="flex min-w-0 flex-wrap items-baseline text-2xl font-semibold">
+                <span>{dateLabel}</span>
+                {timeLabel && <span className="ml-4 text-lg font-normal text-white/70">{timeLabel}</span>}
+              </p>
+              {interestButton}
+            </div>
             {endDateLabel && <p className="text-sm text-white/60">Hasta: {endDateLabel}</p>}
           </div>
 
