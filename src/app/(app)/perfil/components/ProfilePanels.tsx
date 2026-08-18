@@ -69,6 +69,14 @@ function TabButton({
   );
 }
 
+// md:min-w-0 es lo que mantiene cada columna clavada en su mitad: sin él,
+// el min-width:auto de un flex item se resuelve al min-content de lo que
+// lleva dentro, y el min-content de una fila de evento incluye el título
+// entero (va con truncate, o sea white-space:nowrap). El min-w-0 de la
+// celda del título deja que encoja una vez repartido el ancho, pero no
+// rebaja lo que la columna declara necesitar, así que con un título largo
+// la columna se negaba a bajar del 50% y se metía por encima de la línea
+// divisoria. Vale para las dos columnas, Historial incluido.
 function PanelSection({
   visible,
   side,
@@ -84,7 +92,7 @@ function PanelSection({
         w-full
         ${visible ? "flex" : "hidden md:flex"}
         flex-col items-center
-        md:flex-1 ${side === "left" ? "md:pr-8" : "md:pl-8"}
+        md:flex-1 md:min-w-0 ${side === "left" ? "md:pr-8" : "md:pl-8"}
       `}
     >
       {children}
