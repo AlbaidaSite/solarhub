@@ -11,9 +11,11 @@ interface BirthdayPillsProps {
   onInterestToggled?: (eventId: number, liked: boolean) => void;
 }
 
-// Pastillas de cumpleaños, justo debajo del número de día (top-1.5..~top-8
-// está reservado para el número y el icono +, así que la banda empieza en
-// top-9). La pastilla ENTERA es el botón de "mostrar interés" — un
+// Pastillas de cumpleaños, en la banda inferior de la celda. Antes iban
+// arriba, justo debajo del número, y los puntos abajo; se intercambiaron
+// para que los puntos —mucho más estrechos— sean los que compartan sitio
+// con el número, y esta banda ancha tape la parte de la imagen que menos
+// información lleva. La pastilla ENTERA es el botón de "mostrar interés" — un
 // <button>, con una campana a cada lado del título que cambia
 // BellOff/BellRing según el estado; ya no hay un botón anidado ni un
 // fondo circular aparte para la campana. Un cumpleaños sigue sin abrir
@@ -53,7 +55,7 @@ export default function BirthdayPills({ birthdays, onInterestToggled }: Birthday
   };
 
   return (
-    <div className="ev-pills absolute top-9 left-0 right-0">
+    <div className="ev-pills absolute bottom-1.5 left-0 right-0">
       {birthdays.map((birthday) => {
         const classes = eventTypeClasses(birthday.eventType.color);
         const BellIcon = birthday.liked ? BellRing : BellOff;

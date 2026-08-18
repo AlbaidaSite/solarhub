@@ -175,6 +175,31 @@ describe("CalendarCell — cumpleaños y puntos", () => {
   });
 });
 
+describe("CalendarCell — un solo evento", () => {
+  it("no muestra puntos: la propia celda ya identifica ese evento", () => {
+    const only = makeOccurrence({ id: 1 });
+    render(<Harness occurrences={[only]} />);
+
+    expect(screen.getByAltText(only.title)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: only.title })).not.toBeInTheDocument();
+  });
+
+});
+
+describe("CalendarCell — clic sobre un punto", () => {
+  it("abre el detalle de ese evento, no el del que se está mostrando", () => {
+    const a = makeOccurrence({ id: 1 });
+    const b = makeOccurrence({ id: 2 });
+    const onEventSelect = vi.fn();
+    render(<Harness occurrences={[a, b]} onEventSelect={onEventSelect} />);
+
+    fireEvent.click(screen.getByRole("button", { name: b.title }));
+
+    expect(onEventSelect).toHaveBeenCalledTimes(1);
+    expect(onEventSelect).toHaveBeenCalledWith(b.id, expect.any(String));
+  });
+});
+
 describe("CalendarCell — celda móvil", () => {
   it("marca hoy con relleno y el seleccionado con borde, simultáneamente si coinciden", () => {
     const madridToday = today("Europe/Madrid");

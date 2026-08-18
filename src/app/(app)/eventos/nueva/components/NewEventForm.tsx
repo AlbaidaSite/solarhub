@@ -487,11 +487,18 @@ export default function NewEventForm({
               className="scheme-dark"
               containerClassName="flex-1"
             />
+            {/* "(opcional)" va dentro del propio campo, como placeholder, y
+                no en el rótulo de arriba: ese rótulo es el de la fecha, que
+                sí es obligatoria, y colgarle ahí la excepción de la hora se
+                leía como si contradijera su propio asterisco. El ancho sube
+                de w-32 a w-44 justo para que el texto quepa sin recortarse
+                (el campo de fecha, flex-1, absorbe la diferencia). */}
             <ClockTimePicker
               value={startTime}
               onChange={setStartTime}
+              placeholder="Hora (opcional)"
               ariaLabel="Hora de inicio"
-              className="w-32"
+              className="w-44"
             />
           </div>
         </div>
@@ -515,8 +522,9 @@ export default function NewEventForm({
               value={endTime}
               onChange={setEndTime}
               disabled={!endDate}
+              placeholder="Hora (opcional)"
               ariaLabel="Hora de fin"
-              className="w-32"
+              className="w-44"
             />
           </div>
         </div>

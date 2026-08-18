@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useDialog, FocusScope } from "react-aria";
-import { ArrowLeft, BellOff, BellRing, Check, ExternalLink, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, BellOff, BellRing, Check, ChevronLeft, ChevronRight, ExternalLink, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
 import { eventTypeClasses } from "@/lib/eventTypeClasses";
 import { isBirthday, type EventOccurrence, type EventPrice } from "@/types/events";
 import {
@@ -25,6 +25,16 @@ import { isPastOccurrence } from "../lib/eventOccurrences";
 
 interface EventDetailModalProps {
   occurrence: EventOccurrence;
+  // Los eventos del día que se está mirando, en el orden del calendario y
+  // con el propio `occurrence` dentro: es la lista por la que se mueven
+  // las flechas laterales. Sin ella (o con un único evento ese día) no se
+  // pintan las flechas. Ojo: "el día que se está mirando" no siempre es
+  // la fecha de inicio de este evento — uno de varios días se abre desde
+  // cualquiera de sus celdas (ver EventsCalendar.tsx).
+  dayOccurrences?: EventOccurrence[];
+  // Salta a otro evento del mismo día. Lo resuelve el llamante, que es
+  // quien sabe de qué día vino el detalle abierto.
+  onNavigate?: (eventId: number) => void;
   onClose: () => void;
   // Presente solo cuando el modal se abrió desde la lista de eventos del
   // día (móvil): sustituye el cierre por una flecha "volver" — Escape y el
@@ -42,6 +52,13 @@ interface EventDetailModalProps {
 
 type DeleteStep = null | "confirm1" | "confirm2";
 
+// Flechas de navegación entre eventos del día: mismo chip negro que la
+// campana y los botones de editar/eliminar, pero centradas verticalmente
+// sobre la imagen — las cuatro esquinas ya están ocupadas. Solo cambia
+// left/right entre una y otra.
+const DAY_NAV_ARROW_CLASS =
+  "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white/80 transition-colors hover:bg-black/80 hover:text-white";
+
 // Un cumpleaños nunca debe llegar hasta aquí (ver BirthdayPills.tsx y
 // EventListModal.tsx: los cumpleaños no son clicables en ningún sitio).
 // Si ocurre, es un error de programación en el llamante — se avisa fuerte
@@ -50,6 +67,8 @@ type DeleteStep = null | "confirm1" | "confirm2";
 // hooks deben ejecutarse siempre en el mismo orden).
 export default function EventDetailModal({
   occurrence,
+  dayOccurrences = [],
+  onNavigate,
   onClose,
   onBack,
   onDelete,
@@ -211,6 +230,50 @@ export default function EventDetailModal({
   // toggleEventInterestAction): en vez de una campana que no responde, no
   // hay campana. Los cumpleaños no entran aquí, se repiten cada año.
   const isPast = isPastOccurrence(occurrence, todayInMadrid());
+
+  // Flechas para saltar entre los eventos del MISMO día, una a cada lado
+  // de la imagen. Dan la vuelta en los dos sentidos: desde el último, la
+  // siguiente lleva al primero. No compiten con el carrusel de fotos del
+  // propio evento, que se maneja con las miniaturas de debajo.
+  const dayIndex = dayOccurrences.findIndex((o) => o.id === occurrence.id);
+  const canNavigateDay = onNavigate != null && dayOccurrences.length > 1 && dayIndex >= 0;
+
+  const goToDaySibling = (offset: number) => {
+    // El módulo se aplica sobre la suma con la longitud porque en JS el
+    // resto de un negativo es negativo (-1 % 3 === -1): sin ese ajuste,
+    // retroceder desde el primero daría un índice fuera de rango.
+    const next = (dayIndex + offset + dayOccurrences.length) % dayOccurrences.length;
+    onNavigate?.(dayOccurrences[next].id);
+  };
+
+  const dayNavArrows = canNavigateDay ? (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          goToDaySibling(-1);
+        }}
+        aria-label="Evento anterior de este día"
+        title="Evento anterior de este día"
+        className={DAY_NAV_ARROW_CLASS + " left-3"}
+      >
+        <ChevronLeft size={24} />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          goToDaySibling(1);
+        }}
+        aria-label="Evento siguiente de este día"
+        title="Evento siguiente de este día"
+        className={DAY_NAV_ARROW_CLASS + " right-3"}
+      >
+        <ChevronRight size={24} />
+      </button>
+    </>
+  ) : null;
 
   // Mostrar interés — cualquier autenticado, sin relación con canEdit.
   // Anclada a la esquina superior IZQUIERDA de la imagen (editar/eliminar
@@ -383,6 +446,7 @@ export default function EventDetailModal({
                 />
                 {interestButton}
                 {editDeleteButtons}
+                {dayNavArrows}
               </div>
             ) : (
               <div
@@ -400,6 +464,7 @@ export default function EventDetailModal({
                 </div>
                 {interestButton}
                 {editDeleteButtons}
+                {dayNavArrows}
               </div>
             )}
           </div>

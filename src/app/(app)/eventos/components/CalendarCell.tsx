@@ -160,6 +160,7 @@ export default function CalendarCell({
             dotSequence={desktopDots}
             visibleEventId={visibleEventId}
             onSelect={(eventId) => onSelectStickyImage(dateKey, eventId)}
+            onOpen={(eventId) => onEventSelect?.(eventId, dateKey)}
           />
           {/* Segundo borde negro de 2px, por dentro del border-2 de color.
               Va como último hermano (no como shadow del contenedor): la capa
@@ -198,13 +199,13 @@ export default function CalendarCell({
             {mobileDots.visible.map((occurrence) => (
               <span
                 key={occurrence.id}
-                className={`h-1.5 w-1.5 rounded-full ${eventTypeClasses(occurrence.eventType.color).dot} ${
+                className={`h-2 w-2 rounded-full ${eventTypeClasses(occurrence.eventType.color).dot} ${
                   occurrence.liked ? "ring-2 ring-white" : ""
                 }`}
               />
             ))}
             {mobileDots.overflowCount > 0 && (
-              <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+              <span className="h-2 w-2 rounded-full bg-zinc-400" />
             )}
           </span>
         </button>

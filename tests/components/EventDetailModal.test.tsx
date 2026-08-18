@@ -99,6 +99,114 @@ beforeEach(() => {
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
 });
 
+describe("EventDetailModal · flechas entre eventos del día", () => {
+  const otro: EventOccurrence = { ...baseOccurrence, id: 7, title: "Charla" };
+  const tercero: EventOccurrence = { ...baseOccurrence, id: 9, title: "Concierto" };
+
+  it("sin más eventos ese día no hay flechas", () => {
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[baseOccurrence]}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Evento siguiente de este día" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Evento anterior de este día" }),
+    ).not.toBeInTheDocument();
+  });
+
+  // Sin onNavigate las flechas no llevarían a ninguna parte: el llamante
+  // es quien resuelve el salto (ver EventsCalendar.tsx).
+  it("sin onNavigate tampoco, aunque el día tenga varios eventos", () => {
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[baseOccurrence, otro]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Evento siguiente de este día" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("la flecha siguiente pide el evento contiguo del día", async () => {
+    const onNavigate = vi.fn();
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[baseOccurrence, otro]}
+        onNavigate={onNavigate}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Evento siguiente de este día" }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith(otro.id);
+  });
+
+  // Da la vuelta en los dos sentidos.
+  it("desde el primero, la flecha anterior lleva al último", async () => {
+    const onNavigate = vi.fn();
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[baseOccurrence, otro, tercero]}
+        onNavigate={onNavigate}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Evento anterior de este día" }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith(tercero.id);
+  });
+
+  it("desde el último, la flecha siguiente vuelve al primero", async () => {
+    const onNavigate = vi.fn();
+    render(
+      <EventDetailModal
+        occurrence={tercero}
+        dayOccurrences={[baseOccurrence, otro, tercero]}
+        onNavigate={onNavigate}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Evento siguiente de este día" }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith(baseOccurrence.id);
+  });
+
+  // El evento abierto puede no estar en la lista del día si la caché del
+  // mes va por detrás; sin un punto de partida no hay salto que ofrecer.
+  it("si el evento abierto no está en la lista del día, no hay flechas", () => {
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[otro, tercero]}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Evento siguiente de este día" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("EventDetailModal · guarda contra cumpleaños", () => {
   it("con un cumpleaños, no renderiza nada y avisa por consola", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

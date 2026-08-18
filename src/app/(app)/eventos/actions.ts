@@ -113,9 +113,18 @@ export async function getUpcomingLikedEventsAction(): Promise<EventOccurrence[]>
   // próxima vez que toca" — nos quedamos con la primera aparición de cada
   // id (events_in_range ya ordena por occurrence_date ascendente, así que
   // la primera es la más próxima) y se descarta el resto.
+  //
+  // El otro descarte es por el borde inferior del rango: events_in_range
+  // devuelve también lo que SOLAPA el rango sin empezar dentro (así un
+  // evento de varios días se pinta en todas sus celdas del calendario,
+  // ver la migración events_in_range_multi_day), y aquí eso significaría
+  // colar en "pendientes" un evento que arrancó hace días, fechado en el
+  // pasado y ordenado por delante de todo lo demás. Esta lista es de lo
+  // que está POR VENIR, así que se queda fuera.
   const seenEventIds = new Set<number>();
   const nextOccurrencePerEvent: EventOccurrenceRow[] = [];
   for (const row of rows) {
+    if (row.occurrence_date < rangeStart) continue;
     if (!row.liked || seenEventIds.has(row.id)) continue;
     seenEventIds.add(row.id);
     nextOccurrencePerEvent.push(row);

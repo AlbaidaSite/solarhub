@@ -317,7 +317,7 @@ function EventsCalendarInner({
   // Quita el evento borrado de TODOS los meses cacheados (no solo el
   // visible): un evento YEARLY aparece una vez por año bajo el mismo id,
   // y monthCache puede tener varios de esos años cargados a la vez.
-  function handleEventDeleted(eventId: number, dateKey: string) {
+  function handleEventDeleted(eventId: number) {
     setModal({ view: "closed" });
     setMonthCache((prev) => {
       const next = new Map<string, EventOccurrence[]>();
@@ -326,16 +326,20 @@ function EventsCalendarInner({
       }
       return next;
     });
-    // Si el evento borrado era el fijado (sticky) en esa celda, se limpia
-    // la entrada — más simple que buscar otro evento del mismo día para
-    // fijarlo a mano, y el resultado es el mismo: CalendarCell cae de
-    // vuelta a getDefaultOccurrence (el primero), como si nunca se
-    // hubiera fijado ninguno.
+    // Se limpia la fijación (sticky) del evento borrado en CUALQUIER día
+    // que lo tuviera, no solo en el día desde el que se abrió el modal: un
+    // evento de varios días ocupa una celda por día (ver
+    // groupOccurrencesByDate) y puede estar fijado en varias a la vez.
+    // Dejar una entrada apuntando a un id que ya no existe dejaría esa
+    // celda sin imagen aunque le queden otros eventos; limpiándola,
+    // CalendarCell cae de vuelta a getDefaultOccurrence (el primero), como
+    // si nunca se hubiera fijado ninguno.
     setStickyImageByDate((prev) => {
-      if (prev.get(dateKey) !== eventId) return prev;
-      const next = new Map(prev);
-      next.delete(dateKey);
-      return next;
+      const next = new Map<string, number>();
+      for (const [key, stickyId] of prev) {
+        if (stickyId !== eventId) next.set(key, stickyId);
+      }
+      return next.size === prev.size ? prev : next;
     });
   }
 
@@ -457,16 +461,36 @@ function EventsCalendarInner({
           const occurrence = findOccurrence(modal.eventId, modal.occurrenceDate);
           if (!occurrence) return null;
           const { from, listDateKey } = modal;
+          // Día que el usuario está mirando, que es por el que se mueven
+          // las flechas del modal. Cuando se viene del listado móvil manda
+          // listDateKey: por ese camino `occurrenceDate` guarda la fecha
+          // de INICIO del evento, que en uno de varios días no tiene por
+          // qué ser el día abierto (ver onSelectEvent, más abajo). Desde
+          // la rejilla las dos son ya la misma cosa.
+          const viewedDateKey = listDateKey ?? modal.occurrenceDate;
+          // Los cumpleaños quedan fuera: no tienen modal de detalle, así
+          // que tampoco son un paso válido de las flechas.
+          const dayOccurrences = (occurrencesByDate.get(viewedDateKey) ?? []).filter(
+            (o) => !isBirthday(o),
+          );
           return (
             <EventDetailModal
+              // Remonta al saltar de evento: el modal guarda estado propio
+              // por evento (precios, fotos extra, permisos de edición) y
+              // sin esto se vería un instante el del evento anterior.
+              key={modal.eventId}
               occurrence={occurrence}
+              dayOccurrences={dayOccurrences}
+              onNavigate={(eventId) =>
+                setModal({ view: "detail", eventId, occurrenceDate: modal.occurrenceDate, from, listDateKey })
+              }
               onClose={() => setModal({ view: "closed" })}
               onBack={
                 from === "list" && listDateKey
                   ? () => setModal({ view: "list", dateKey: listDateKey })
                   : undefined
               }
-              onDelete={() => handleEventDeleted(occurrence.id, occurrence.occurrenceDate)}
+              onDelete={() => handleEventDeleted(occurrence.id)}
               onInterestToggled={handleEventInterestToggled}
             />
           );
