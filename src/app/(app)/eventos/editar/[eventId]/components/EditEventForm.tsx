@@ -17,6 +17,7 @@ import {
 import AuroraField from "@/components/ui/AuroraField";
 import ClockTimePicker from "@/components/ui/ClockTimePicker";
 import CornerButton from "@/components/ui/CornerButton";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { supabase } from "@/lib/supabase/client";
 import {
   addEventPhotosAction,
@@ -454,13 +455,14 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
       <form
         onSubmit={handleSubmit}
+        onKeyDown={preventEnterSubmit}
         onChange={() => setSubmitError(null)}
         className="w-full max-w-lg flex flex-col gap-8"
       >
 
         {/* Título */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Título <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -474,7 +476,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Lugar */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Lugar <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -488,7 +490,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Fecha de inicio */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Fecha de inicio <span className="text-red-400">*</span>
           </label>
           <div className="flex gap-2">
@@ -519,7 +521,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Fecha de fin */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Fecha de fin <span className="text-zinc-500 font-normal">(opcional)</span>
           </label>
           <div className="flex gap-2">
@@ -545,7 +547,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Precio */}
         <fieldset>
-          <legend className="text-sm font-medium text-zinc-400 mb-3">
+          <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
             Precio <span className="text-zinc-500 font-normal">(opcional)</span>
           </legend>
           {prices.length > 0 && (
@@ -596,7 +598,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Información */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Información <span className="text-zinc-500 font-normal">(opcional)</span>
           </label>
           <textarea
@@ -610,7 +612,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Link de interés */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Link de interés <span className="text-zinc-500 font-normal">(opcional)</span>
           </label>
           <AuroraField
@@ -626,7 +628,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Tipo de evento */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Tipo de evento <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -647,7 +649,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
         {/* Portada + fotos existentes */}
         {(detail.imageUrl || existingPhotos.length > 0) && (
           <fieldset>
-            <legend className="text-sm font-medium text-zinc-400 mb-3">
+            <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
               Fotos actuales
             </legend>
             {deletePhotoError && (
@@ -702,6 +704,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
           onUpdate={handleUpdateMedia}
           maxFiles={Math.max(0, 3 - existingPhotos.length - (detail.imageUrl ? 1 : 0))}
           photosOnly
+          legendClassName="text-base md:text-lg font-medium text-zinc-400 mb-3"
         />
 
         {/* Checkboxes */}

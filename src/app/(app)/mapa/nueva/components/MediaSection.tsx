@@ -246,6 +246,12 @@ interface MediaSectionProps {
    * dejan a false: ahí la foto sigue siendo opcional.
    */
   required?: boolean;
+  /**
+   * Clases del rótulo de la sección. Por defecto coincide con el resto de
+   * rótulos de los formularios de pin; los de evento pasan una versión más
+   * grande para no descuadrar frente a sus propios rótulos.
+   */
+  legendClassName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +267,7 @@ export default function MediaSection({
   maxFiles = MAX_FILES,
   photosOnly = false,
   required = false,
+  legendClassName = "text-base md:text-lg font-medium text-zinc-400 mb-3",
 }: MediaSectionProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const remaining = maxFiles - entries.length;
@@ -327,7 +334,7 @@ export default function MediaSection({
 
   return (
     <fieldset>
-      <legend className="text-sm font-medium text-zinc-400 mb-3">
+      <legend className={legendClassName}>
         {photosOnly ? "Foto" : "Multimedia"}{" "}
         {required ? (
           <span className="text-red-400">*</span>

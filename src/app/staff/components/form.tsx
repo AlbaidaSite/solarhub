@@ -11,16 +11,28 @@ export const FIELD_CLASS =
 export const LABEL_CLASS =
   "text-xs font-semibold text-white/70 uppercase tracking-wide";
 
+// Misma etiqueta, un par de puntos más grande. Los formularios de sticker la
+// usan porque son cortos (nombre + icono) y el rótulo en text-xs quedaba
+// perdido al lado del campo.
+export const LABEL_CLASS_LG =
+  "text-sm md:text-base font-semibold text-white/70 uppercase tracking-wide";
+
 interface FieldProps {
   label: string;
+  // Permite sustituir LABEL_CLASS por otra variante (p.ej. LABEL_CLASS_LG).
+  labelClassName?: string;
   children: ReactNode;
 }
 
 // Envuelve un input/select/textarea con su etiqueta superior en mayúsculas.
-export function Field({ label, children }: FieldProps) {
+export function Field({
+  label,
+  labelClassName = LABEL_CLASS,
+  children,
+}: FieldProps) {
   return (
     <label className="flex flex-col gap-1">
-      <span className={LABEL_CLASS}>{label}</span>
+      <span className={labelClassName}>{label}</span>
       {children}
     </label>
   );

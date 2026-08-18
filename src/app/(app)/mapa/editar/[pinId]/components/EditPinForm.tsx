@@ -18,6 +18,7 @@ import {
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
 import { parseCoordinates } from "@/lib/parseCoordinates";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { supabase } from "@/lib/supabase/client";
 import {
   addMapMediaAction,
@@ -431,11 +432,15 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
       <h1 className="text-3xl font-bold text-white mb-8">Editar pegatina</h1>
 
-      <form onSubmit={handleSubmit} className="w-full max-w-lg flex flex-col gap-8">
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={preventEnterSubmit}
+        className="w-full max-w-lg flex flex-col gap-8"
+      >
 
         {/* 1. Sticker selector */}
         <fieldset>
-          <legend className="text-sm font-medium text-zinc-400 mb-3">
+          <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
             Pegatina <span className="text-red-400">*</span>
           </legend>
           <div className="grid grid-cols-5 gap-2">
@@ -473,7 +478,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
         {/* 2. Place */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Lugar donde se colocó <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -487,7 +492,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
         {/* 3. State (optional) */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">Ciudad</label>
+          <label className="text-base md:text-lg font-medium text-zinc-400">Ciudad</label>
           <AuroraField
             type="text"
             placeholder="Ej: Sevilla"
@@ -499,7 +504,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
         {/* 4. Country combobox */}
         <div ref={countryWrapperRef} className="relative flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             País <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -534,7 +539,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
         {/* 5. Coordinates */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Coordenadas <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -561,7 +566,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
         {/* 6. Date */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Fecha en la que se colocó <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -577,7 +582,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
         {/* 7. Existing media */}
         {existingMedia.length > 0 && (
           <fieldset>
-            <legend className="text-sm font-medium text-zinc-400 mb-3">
+            <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
               Multimedia actual
             </legend>
             {deleteMediaError && (

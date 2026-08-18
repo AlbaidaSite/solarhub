@@ -4,10 +4,11 @@ import { useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ImageIcon } from "lucide-react";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import {
   Field,
   FIELD_CLASS,
-  LABEL_CLASS,
+  LABEL_CLASS_LG,
   SubmitButton,
 } from "../../components/form";
 import type { StickerActionResult } from "../actions";
@@ -72,9 +73,10 @@ export default function StickerForm({
   return (
     <form
       onSubmit={handleSubmit}
+      onKeyDown={preventEnterSubmit}
       className="flex flex-col gap-5 max-w-md w-full"
     >
-      <Field label="Nombre *">
+      <Field label="Nombre *" labelClassName={LABEL_CLASS_LG}>
         <input
           type="text"
           name="name"
@@ -85,7 +87,7 @@ export default function StickerForm({
       </Field>
 
       <div className="flex flex-col gap-2">
-        <span className={LABEL_CLASS}>
+        <span className={LABEL_CLASS_LG}>
           Icono{isEditing ? " (dejar vacío para conservar el actual)" : " *"}
         </span>
 

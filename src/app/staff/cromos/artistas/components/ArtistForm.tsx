@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { Field, FIELD_CLASS, SubmitButton } from "../../../components/form";
 import type { ArtistActionResult } from "../actions";
 
@@ -41,6 +42,7 @@ export default function ArtistForm({
   return (
     <form
       onSubmit={handleSubmit}
+      onKeyDown={preventEnterSubmit}
       className="flex flex-col gap-5 max-w-md w-full"
     >
       <Field label="Nombre *">

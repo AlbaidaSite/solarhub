@@ -16,6 +16,7 @@ import {
 import AuroraField from "@/components/ui/AuroraField";
 import ClockTimePicker from "@/components/ui/ClockTimePicker";
 import CornerButton from "@/components/ui/CornerButton";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { supabase } from "@/lib/supabase/client";
 import { addEventPhotosAction, createEventAction, type CreateEventPrice } from "../../actions";
 import { combineDateTime, isEndBeforeStart } from "../../lib/eventDates";
@@ -440,13 +441,14 @@ export default function NewEventForm({
 
       <form
         onSubmit={handleSubmit}
+        onKeyDown={preventEnterSubmit}
         onChange={() => setSubmitError(null)}
         className="w-full max-w-lg flex flex-col gap-8"
       >
 
         {/* Título */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Título <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -460,7 +462,7 @@ export default function NewEventForm({
 
         {/* Lugar */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Lugar <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -474,7 +476,7 @@ export default function NewEventForm({
 
         {/* Fecha de inicio */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Fecha de inicio <span className="text-red-400">*</span>
           </label>
           <div className="flex gap-2">
@@ -505,7 +507,7 @@ export default function NewEventForm({
 
         {/* Fecha de fin */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Fecha de fin <span className="text-zinc-500 font-normal">(opcional)</span>
           </label>
           <div className="flex gap-2">
@@ -531,7 +533,7 @@ export default function NewEventForm({
 
         {/* Precio */}
         <fieldset>
-          <legend className="text-sm font-medium text-zinc-400 mb-3">
+          <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
             Precio <span className="text-zinc-500 font-normal">(opcional)</span>
           </legend>
           {prices.length > 0 && (
@@ -593,7 +595,7 @@ export default function NewEventForm({
 
         {/* Información */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Información <span className="text-zinc-500 font-normal">(opcional)</span>
           </label>
           <textarea
@@ -607,7 +609,7 @@ export default function NewEventForm({
 
         {/* Link de interés */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Link de interés <span className="text-zinc-500 font-normal">(opcional)</span>
           </label>
           <AuroraField
@@ -623,7 +625,7 @@ export default function NewEventForm({
 
         {/* Tipo de evento */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Tipo de evento <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -649,6 +651,7 @@ export default function NewEventForm({
           onUpdate={handleUpdateMedia}
           maxFiles={3}
           photosOnly
+          legendClassName="text-base md:text-lg font-medium text-zinc-400 mb-3"
         />
 
         {/* Checkboxes */}
