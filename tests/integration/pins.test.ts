@@ -1,5 +1,7 @@
-// SUT: src/app/(app)/mapa/actions.ts → createPinAction, updatePinAction, deletePinAction
-// Cubre RF-024 (publicar pin), RF-025 (editar), RF-026 (eliminar) y RN-018 (autoría).
+// SUT: src/app/(app)/mapa/actions.ts → createPinAction, updatePinAction,
+// deletePinAction, deleteMapMediaAction
+// Cubre RF-024 (publicar pin), RF-025 (editar), RF-026 (eliminar), RN-018
+// (autoría) y el mínimo de multimedia obligatorio de un pin.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSupabaseStub } from "../fixtures/supabaseMock";
@@ -8,11 +10,20 @@ vi.mock("@/lib/supabase/actionAuth", () => ({
   requireUserActionClient: vi.fn(),
 }));
 
+// Las actions invalidan la caché del mapa al terminar; fuera de una
+// petición de Next, revalidatePath lanza ("static generation store
+// missing"), así que se sustituye por un espía.
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
 import { requireUserActionClient } from "@/lib/supabase/actionAuth";
+import { revalidatePath } from "next/cache";
 import {
   createPinAction,
   updatePinAction,
   deletePinAction,
+  deleteMapMediaAction,
 } from "@/app/(app)/mapa/actions";
 
 const validData = {
@@ -61,6 +72,10 @@ describe("RF-024 · publicar pin", () => {
 
     const result = await createPinAction(validData);
     expect(result).toEqual({ ok: true, pinId: 42 });
+    // El mapa se invalida aquí y no con un router.refresh() en el cliente:
+    // lanzado junto al router.push() cancelaba la navegación y dejaba el
+    // formulario colgado con el pin ya guardado.
+    expect(revalidatePath).toHaveBeenCalledWith("/mapa");
   });
 
   it("usuario no autenticado: rechazado sin tocar la tabla pin", async () => {
@@ -248,5 +263,70 @@ describe("RF-026 · eliminar pin (RN-018)", () => {
     expect(result.ok).toBe(false);
     // Solo se intenta el lookup; la action sale antes de tocar map_media.
     expect(tableCalls).toEqual(["pin"]);
+  });
+});
+
+describe("multimedia obligatorio · borrar un archivo del pin", () => {
+  // deleteMapMediaAction hace, en orden: canEditPin (from("pin") +
+  // quizá rpc), lookup del archivo a borrar y recuento de los archivos
+  // del pin. `mediaRows` fija cuántos hay en ese recuento.
+  function setupDeleteMedia({ mediaRows }: { mediaRows: Array<{ id: number }> }) {
+    const tableCalls: string[] = [];
+    const deleteCalls: string[] = [];
+    const fromImpl = vi.fn((table: string) => {
+      tableCalls.push(table);
+      const mediaCallIdx = tableCalls.filter((t) => t === "map_media").length;
+      const chain: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "returns"] as const) chain[m] = () => chain;
+      chain.delete = () => {
+        deleteCalls.push(table);
+        return chain;
+      };
+      chain.maybeSingle = () => chain;
+      chain.then = (onF: (v: unknown) => unknown) => {
+        if (table === "pin") {
+          return Promise.resolve({ data: { user_id: "u-A" }, error: null }).then(onF);
+        }
+        if (table === "map_media") {
+          // 1ª: el archivo concreto. 2ª: el recuento del pin.
+          return Promise.resolve(
+            mediaCallIdx === 1
+              ? { data: { path: "map-media/9/a.webp" }, error: null }
+              : { data: mediaRows, error: null },
+          ).then(onF);
+        }
+        return Promise.resolve({ data: null, error: null }).then(onF);
+      };
+      return chain;
+    });
+    const stub = createSupabaseStub({
+      authUserId: "u-A",
+      rpc: { is_staff: { data: false, error: null } },
+    });
+    stub.client.from = fromImpl as never;
+    vi.mocked(requireUserActionClient).mockResolvedValue({
+      ok: true,
+      supabase: stub.client as never,
+      userId: "u-A",
+    });
+    return { stub, deleteCalls };
+  }
+
+  it("con varios archivos, el borrado sigue adelante", async () => {
+    const { stub, deleteCalls } = setupDeleteMedia({ mediaRows: [{ id: 1 }, { id: 2 }] });
+    const result = await deleteMapMediaAction(1, 9);
+    expect(result.ok).toBe(true);
+    expect(deleteCalls).toContain("map_media");
+    expect(stub.calls.storageRemove).toHaveLength(1);
+  });
+
+  it("con un solo archivo, se rechaza: el pin no puede quedarse sin multimedia", async () => {
+    const { stub, deleteCalls } = setupDeleteMedia({ mediaRows: [{ id: 1 }] });
+    const result = await deleteMapMediaAction(1, 9);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("al menos un archivo multimedia");
+    // Ni la fila ni el objeto de storage se tocan.
+    expect(deleteCalls).toEqual([]);
+    expect(stub.calls.storageRemove).toEqual([]);
   });
 });

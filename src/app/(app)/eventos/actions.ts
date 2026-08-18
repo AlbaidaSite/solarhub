@@ -1,8 +1,10 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUserActionClient } from "@/lib/supabase/actionAuth";
 import { getStorageUrl, STORAGE_BUCKET } from "@/lib/supabase/storage";
+import { madridIsoDate, todayInMadrid } from "./lib/formatting";
 import {
   toEventOccurrence,
   type EventOccurrence,
@@ -12,6 +14,9 @@ import {
 } from "@/types/events";
 
 type ServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+// Vista que queda desfasada cuando se crea, edita o borra un evento.
+const EVENTS_PATH = "/eventos";
 
 // `image_url` y `event_type.icon_path` guardan rutas de Storage, no URLs
 // públicas — se resuelven aquí, igual que en mapa/actions.ts. Compartido
@@ -66,17 +71,6 @@ export async function getEventOccurrencesInRangeAction(
 // suficiente para que cualquier evento YEARLY marcado aparezca por su
 // próxima ocurrencia sin importar en qué punto del año esté ahora mismo.
 
-function todayInMadrid(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Madrid",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
-  return `${map.year}-${map.month}-${map.day}`;
-}
-
 function addDaysToIsoDate(isoDate: string, days: number): string {
   const [year, month, day] = isoDate.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
@@ -119,9 +113,18 @@ export async function getUpcomingLikedEventsAction(): Promise<EventOccurrence[]>
   // próxima vez que toca" — nos quedamos con la primera aparición de cada
   // id (events_in_range ya ordena por occurrence_date ascendente, así que
   // la primera es la más próxima) y se descarta el resto.
+  //
+  // El otro descarte es por el borde inferior del rango: events_in_range
+  // devuelve también lo que SOLAPA el rango sin empezar dentro (así un
+  // evento de varios días se pinta en todas sus celdas del calendario,
+  // ver la migración events_in_range_multi_day), y aquí eso significaría
+  // colar en "pendientes" un evento que arrancó hace días, fechado en el
+  // pasado y ordenado por delante de todo lo demás. Esta lista es de lo
+  // que está POR VENIR, así que se queda fuera.
   const seenEventIds = new Set<number>();
   const nextOccurrencePerEvent: EventOccurrenceRow[] = [];
   for (const row of rows) {
+    if (row.occurrence_date < rangeStart) continue;
     if (!row.liked || seenEventIds.has(row.id)) continue;
     seenEventIds.add(row.id);
     nextOccurrencePerEvent.push(row);
@@ -291,6 +294,7 @@ export async function createEventAction(data: CreateEventData): Promise<CreateEv
     if (priceError) return { ok: false, error: priceError.message };
   }
 
+  revalidatePath(EVENTS_PATH);
   return { ok: true, eventId };
 }
 
@@ -562,6 +566,7 @@ export async function updateEventAction(
     if (priceError) return { ok: false, error: priceError.message };
   }
 
+  revalidatePath(EVENTS_PATH);
   return { ok: true };
 }
 
@@ -592,6 +597,8 @@ export async function deleteEventAction(eventId: number): Promise<EventActionRes
 
   const { error } = await supabase.from("event").delete().eq("id", eventId);
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath(EVENTS_PATH);
   return { ok: true };
 }
 
@@ -607,6 +614,10 @@ export async function toggleEventInterestAction(eventId: number): Promise<Toggle
   const auth = await requireUserActionClient();
   if (!auth.ok) return auth;
   const { supabase, userId } = auth;
+
+  if (await hasEventPassed(supabase, eventId)) {
+    return { ok: false, error: "Este evento ya ha pasado." };
+  }
 
   const { data: existing, error: selectError } = await supabase
     .from("liked_event")
@@ -628,4 +639,25 @@ export async function toggleEventInterestAction(eventId: number): Promise<Toggle
     .insert({ user_id: userId, event_id: eventId });
   if (insertError) return { ok: false, error: insertError.message };
   return { ok: true, liked: true };
+}
+
+// Mismo criterio que isPastOccurrence en lib/eventOccurrences.ts, aplicado
+// aquí sobre la fila cruda: un evento que se repite (hoy, solo los
+// cumpleaños: recurrence YEARLY) nunca queda atrás, y del resto cuenta su
+// último día, que es end_date si lo hay. Ante la duda —evento que no
+// aparece, consulta que falla— no se bloquea: esto acota una acción
+// inofensiva, no protege nada.
+async function hasEventPassed(supabase: ServerClient, eventId: number): Promise<boolean> {
+  const { data } = await supabase
+    .from("event")
+    .select("event_date, end_date, recurrence")
+    .eq("id", eventId)
+    .maybeSingle<{ event_date: string; end_date: string | null; recurrence: string }>();
+
+  if (!data || data.recurrence !== "NONE") return false;
+
+  const startDay = madridIsoDate(data.event_date);
+  const endDay = data.end_date ? madridIsoDate(data.end_date) : null;
+  const lastDay = endDay && endDay > startDay ? endDay : startDay;
+  return lastDay < todayInMadrid();
 }

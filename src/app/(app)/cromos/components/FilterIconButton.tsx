@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 
-export type FilterIconSize = "sm" | "md" | "lg";
+export type FilterIconSize = "sm" | "md" | "lg" | "xl";
 
 interface FilterIconButtonProps {
   iconUrl: string;
@@ -16,12 +16,17 @@ const SIZE_CLASSES: Record<FilterIconSize, string> = {
   sm: "w-8 h-8",
   md: "w-10 h-10",
   lg: "w-12 h-12",
+  // Para vistas donde el icono es el protagonista y no un filtro al
+  // margen (registrar cromo): en móvil se queda como lg, y crece en
+  // cuanto hay ancho de sobra.
+  xl: "w-12 h-12 sm:w-16 sm:h-16",
 };
 
 const SIZE_HINTS: Record<FilterIconSize, string> = {
   sm: "32px",
   md: "40px",
   lg: "48px",
+  xl: "64px",
 };
 
 export default function FilterIconButton({

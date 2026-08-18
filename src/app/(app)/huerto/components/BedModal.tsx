@@ -101,7 +101,13 @@ export default function BedModal({
     itemLabel: "bancal",
     verb: "vaciar",
     action: (gardenBedId) => clearBedCropsAction({ gardenBedId, isFuture }),
-    onSuccess: () => onRowsChange([]),
+    onSuccess: () => {
+      onRowsChange([]);
+      // Y se cierra: lo que queda por ver tras vaciar es el bancal en el
+      // lienzo, no una lista vacía. Quedarse abierto obligaba a cerrar a mano
+      // para comprobar el resultado de una acción irreversible.
+      onClose();
+    },
   });
 
   useEffect(() => {

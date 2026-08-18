@@ -37,6 +37,13 @@ export default function CromoModal({
   // never_owned → grayscale + limited info (no description, no back)
   // isImageLocked → show locked.webp without grayscale (nobody has owned it yet)
   const isGrayscale  = cromo.ownershipState === "never_owned" && !cromo.isImageLocked;
+  // Ver CromoCard.tsx: el gris es solo un filtro, y arrastrar la imagen o
+  // abrirla con el botón derecho devolvía el original a color.
+  const isProtected  = cromo.ownershipState !== "owned";
+  const protectImage = {
+    draggable: !isProtected,
+    onContextMenu: isProtected ? (e: React.MouseEvent) => e.preventDefault() : undefined,
+  };
   const canFlip      = cromo.ownershipState !== "never_owned";
   const showFullInfo = cromo.ownershipState !== "never_owned";
 
@@ -187,6 +194,7 @@ export default function CromoModal({
                     className={`object-contain${isGrayscale ? " grayscale" : ""}`}
                     priority
                     aria-hidden
+                    {...protectImage}
                   />
                   <Image
                     src={displayFront}
@@ -195,6 +203,7 @@ export default function CromoModal({
                     sizes="(max-width: 768px) 80vw, 40vw"
                     className={`object-contain${isGrayscale ? " grayscale" : ""}`}
                     priority
+                    {...protectImage}
                   />
                 </div>
                 {/* Cara reversa: solo si puede girar */}

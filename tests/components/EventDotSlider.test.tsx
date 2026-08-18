@@ -39,7 +39,12 @@ beforeEach(() => {
 describe("EventDotSlider", () => {
   it("no renderiza nada sin eventos ni desbordamiento", () => {
     const { container } = render(
-      <EventDotSlider dotSequence={{ visible: [], overflowCount: 0 }} visibleEventId={null} onSelect={vi.fn()} />,
+      <EventDotSlider
+        dotSequence={{ visible: [], overflowCount: 0 }}
+        visibleEventId={null}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+      />,
     );
     expect(container).toBeEmptyDOMElement();
   });
@@ -47,7 +52,12 @@ describe("EventDotSlider", () => {
   it("cada punto es un botón con aria-label del evento", () => {
     const a = makeOccurrence(1);
     render(
-      <EventDotSlider dotSequence={{ visible: [a], overflowCount: 0 }} visibleEventId={null} onSelect={vi.fn()} />,
+      <EventDotSlider
+        dotSequence={{ visible: [a], overflowCount: 0 }}
+        visibleEventId={null}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+      />,
     );
     expect(screen.getByRole("button", { name: a.title })).toBeInTheDocument();
   });
@@ -56,7 +66,12 @@ describe("EventDotSlider", () => {
     const a = makeOccurrence(1);
     const onSelect = vi.fn();
     render(
-      <EventDotSlider dotSequence={{ visible: [a], overflowCount: 0 }} visibleEventId={null} onSelect={onSelect} />,
+      <EventDotSlider
+        dotSequence={{ visible: [a], overflowCount: 0 }}
+        visibleEventId={null}
+        onSelect={onSelect}
+        onOpen={vi.fn()}
+      />,
     );
 
     const dot = screen.getByRole("button", { name: a.title });
@@ -67,6 +82,47 @@ describe("EventDotSlider", () => {
     expect(onSelect).toHaveBeenNthCalledWith(2, a.id);
   });
 
+  it("el clic sobre un punto abre el detalle de ESE evento", () => {
+    const a = makeOccurrence(1);
+    const b = makeOccurrence(2);
+    const onOpen = vi.fn();
+    render(
+      <EventDotSlider
+        dotSequence={{ visible: [a, b], overflowCount: 0 }}
+        visibleEventId={a.id}
+        onSelect={vi.fn()}
+        onOpen={onOpen}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: b.title }));
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith(b.id);
+  });
+
+  // La capa de imagen de la celda es hermana del slider y abre por su
+  // cuenta el detalle del evento visible: sin detener la propagación, un
+  // clic en un punto abriría el modal dos veces (ver CalendarCell.tsx).
+  it("el clic no se propaga más allá del punto", () => {
+    const a = makeOccurrence(1);
+    const onAncestorClick = vi.fn();
+    render(
+      <div onClick={onAncestorClick}>
+        <EventDotSlider
+          dotSequence={{ visible: [a], overflowCount: 0 }}
+          visibleEventId={a.id}
+          onSelect={vi.fn()}
+          onOpen={vi.fn()}
+        />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: a.title }));
+
+    expect(onAncestorClick).not.toHaveBeenCalled();
+  });
+
   it("todos los puntos comparten el mismo tamaño y no llevan anillo (ese lenguaje visual queda para otro uso)", () => {
     const a = makeOccurrence(1);
     const b = makeOccurrence(2);
@@ -75,6 +131,7 @@ describe("EventDotSlider", () => {
         dotSequence={{ visible: [a, b], overflowCount: 0 }}
         visibleEventId={b.id}
         onSelect={vi.fn()}
+        onOpen={vi.fn()}
       />,
     );
 
@@ -100,6 +157,7 @@ describe("EventDotSlider", () => {
         dotSequence={{ visible: [a, b], overflowCount: 0 }}
         visibleEventId={b.id}
         onSelect={vi.fn()}
+        onOpen={vi.fn()}
       />,
     );
 
@@ -118,6 +176,7 @@ describe("EventDotSlider", () => {
         dotSequence={{ visible: events, overflowCount: 2 }}
         visibleEventId={null}
         onSelect={vi.fn()}
+        onOpen={vi.fn()}
       />,
     );
 

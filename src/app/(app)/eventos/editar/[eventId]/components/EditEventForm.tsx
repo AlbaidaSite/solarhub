@@ -17,6 +17,7 @@ import {
 import AuroraField from "@/components/ui/AuroraField";
 import ClockTimePicker from "@/components/ui/ClockTimePicker";
 import CornerButton from "@/components/ui/CornerButton";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { supabase } from "@/lib/supabase/client";
 import {
   addEventPhotosAction,
@@ -25,6 +26,7 @@ import {
   type CreateEventPrice,
   type EventEditDetail,
 } from "../../../actions";
+import { combineDateTime, isEndBeforeStart } from "../../../lib/eventDates";
 import MediaSection from "../../../../mapa/nueva/components/MediaSection";
 import type { MediaEntry } from "../../../../mapa/nueva/components/MediaSection";
 import { BIRTHDAY_EVENT_TYPE_CODE, type EventTypeInfo } from "@/types/events";
@@ -80,10 +82,6 @@ function isoToDateInput(iso: string): string {
 function isoToTimeInput(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-function combineDateTime(date: string, time: string | null): string {
-  return new Date(`${date}T${time || "00:00"}:00`).toISOString();
 }
 
 function mimeToExt(blob: Blob, originalName: string): string {
@@ -278,7 +276,14 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
     if (!place.trim()) { setSubmitError("El lugar es obligatorio"); return; }
     if (!eventTypeId) { setSubmitError("Selecciona un tipo de evento"); return; }
     if (!startDate) { setSubmitError("La fecha de inicio es obligatoria"); return; }
-    if (endDate && endDate < startDate) {
+    // Se comparan los instantes completos —fecha Y hora—, que es justo lo
+    // que revalida el servidor. Comparando solo las fechas, un evento que
+    // termina el mismo día a una hora anterior pasaba este filtro y volvía
+    // rechazado desde el servidor con ESTE mismo mensaje: parecía que el
+    // aviso se hubiera quedado pegado después de corregir las fechas.
+    const startInstant = combineDateTime(startDate, startTime || null);
+    const endInstant = endDate ? combineDateTime(endDate, endTime || null) : null;
+    if (isEndBeforeStart(startInstant, endInstant)) {
       setSubmitError("La fecha de fin no puede ser anterior a la de inicio");
       return;
     }
@@ -302,9 +307,9 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
       title: title.trim(),
       place: place.trim(),
       eventTypeId,
-      eventDate: combineDateTime(startDate, startTime || null),
+      eventDate: startInstant,
       startTimeIncluded: startTime.trim() !== "",
-      endDate: endDate ? combineDateTime(endDate, endTime || null) : null,
+      endDate: endInstant,
       endTimeIncluded: endDate ? endTime.trim() !== "" : true,
       description: description.trim() || null,
       url: url.trim() || null,
@@ -321,8 +326,11 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
     }
 
     if (readyEntries.length === 0) {
+      // Sin router.refresh() al lado: lanzado en paralelo al push cancela
+      // la navegación y deja el formulario "guardando" para siempre, con
+      // los datos ya guardados. La caché del destino la invalida
+      // revalidatePath() dentro de la action (ver eventos/actions.ts).
       router.push("/eventos");
-      router.refresh();
       return;
     }
 
@@ -332,7 +340,6 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
     if (failures.length === 0) {
       router.push("/eventos");
-      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -354,7 +361,6 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
     if (failures.length === 0) {
       router.push("/eventos");
-      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -417,7 +423,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
               </CornerButton>
               <button
                 type="button"
-                onClick={() => { router.push("/eventos"); router.refresh(); }}
+                onClick={() => { router.push("/eventos"); }}
                 className="text-sm text-white/50 hover:text-white transition-colors self-start cursor-pointer"
               >
                 Continuar sin esas fotos
@@ -447,11 +453,16 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
       <h1 className="text-3xl font-bold text-white mb-8">Editar evento</h1>
 
-      <form onSubmit={handleSubmit} className="w-full max-w-lg flex flex-col gap-8">
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={preventEnterSubmit}
+        onChange={() => setSubmitError(null)}
+        className="w-full max-w-lg flex flex-col gap-8"
+      >
 
         {/* Título */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Título <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -465,7 +476,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Lugar */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Lugar <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -479,7 +490,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Fecha de inicio */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Fecha de inicio <span className="text-red-400">*</span>
           </label>
           <div className="flex gap-2">
@@ -492,18 +503,25 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
               className="scheme-dark"
               containerClassName="flex-1"
             />
+            {/* "(opcional)" va dentro del propio campo, como placeholder, y
+                no en el rótulo de arriba: ese rótulo es el de la fecha, que
+                sí es obligatoria, y colgarle ahí la excepción de la hora se
+                leía como si contradijera su propio asterisco. El ancho sube
+                de w-32 a w-44 justo para que el texto quepa sin recortarse
+                (el campo de fecha, flex-1, absorbe la diferencia). */}
             <ClockTimePicker
               value={startTime}
               onChange={setStartTime}
+              placeholder="Hora (opcional)"
               ariaLabel="Hora de inicio"
-              className="w-32"
+              className="w-44"
             />
           </div>
         </div>
 
         {/* Fecha de fin */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Fecha de fin <span className="text-zinc-500 font-normal">(opcional)</span>
           </label>
           <div className="flex gap-2">
@@ -520,15 +538,16 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
               value={endTime}
               onChange={setEndTime}
               disabled={!endDate}
+              placeholder="Hora (opcional)"
               ariaLabel="Hora de fin"
-              className="w-32"
+              className="w-44"
             />
           </div>
         </div>
 
         {/* Precio */}
         <fieldset>
-          <legend className="text-sm font-medium text-zinc-400 mb-3">
+          <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
             Precio <span className="text-zinc-500 font-normal">(opcional)</span>
           </legend>
           {prices.length > 0 && (
@@ -579,7 +598,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Información */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Información <span className="text-zinc-500 font-normal">(opcional)</span>
           </label>
           <textarea
@@ -593,7 +612,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Link de interés */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Link de interés <span className="text-zinc-500 font-normal">(opcional)</span>
           </label>
           <AuroraField
@@ -609,7 +628,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
 
         {/* Tipo de evento */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Tipo de evento <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -630,7 +649,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
         {/* Portada + fotos existentes */}
         {(detail.imageUrl || existingPhotos.length > 0) && (
           <fieldset>
-            <legend className="text-sm font-medium text-zinc-400 mb-3">
+            <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
               Fotos actuales
             </legend>
             {deletePhotoError && (
@@ -685,6 +704,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
           onUpdate={handleUpdateMedia}
           maxFiles={Math.max(0, 3 - existingPhotos.length - (detail.imageUrl ? 1 : 0))}
           photosOnly
+          legendClassName="text-base md:text-lg font-medium text-zinc-400 mb-3"
         />
 
         {/* Checkboxes */}
@@ -709,7 +729,7 @@ export default function EditEventForm({ detail, eventTypes, isStaff, isLoukou }:
                 onChange={(e) => setHideExternal(e.target.checked)}
                 className="w-4 h-4 accent-amber-300 cursor-pointer"
               />
-              Ocultar a externos
+              Mostrar solo a Loukous
             </label>
           )}
         </div>

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import Image from "next/image";
 import { useDialog, FocusScope } from "react-aria";
-import { X } from "lucide-react";
+import { Sprout, X } from "lucide-react";
 import { plantColorClasses } from "@/lib/plantColorClasses";
 import PlantInfoSection from "./PlantInfoSection";
 import CropDiary from "./CropDiary";
@@ -20,6 +20,11 @@ interface PlantModalProps {
   // tenga en su estado (el lienzo, el panel de cultivos) la sustituya sin
   // recargar el huerto entero.
   onPlantChange: (plant: Plant) => void;
+  // Solo llega en móvil y con permiso de edición: en escritorio este cultivo
+  // se planta arrastrando su icono del panel hasta el bancal, y ahí el botón
+  // sobraría. Cierra la ficha y deja la vista esperando a que se toque un
+  // bancal (ver HuertoView).
+  onPlantHere?: () => void;
 }
 
 // Ficha de un cultivo: se abre desde el icono del panel de cultivos y
@@ -31,6 +36,7 @@ export default function PlantModal({
   canManage,
   onClose,
   onPlantChange,
+  onPlantHere,
 }: PlantModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const { dialogProps, titleProps } = useDialog({}, dialogRef);
@@ -100,10 +106,31 @@ export default function PlantModal({
                 unoptimized
               />
             </div>
-            <h1 id="plant-detail-title" {...titleProps} className="text-4xl font-bold text-white">
+            {/* El id va DESPUES del spread: titleProps trae el suyo propio
+                y, puesto antes, lo pisaba — el aria-labelledby de arriba
+                apuntaba entonces a un elemento que no existia y la ficha se
+                quedaba sin nombre accesible. */}
+            <h1 {...titleProps} id="plant-detail-title" className="text-4xl font-bold text-white">
               {plant.name}
             </h1>
           </header>
+
+          {/* Encima de la información de la ficha a propósito: quien abre
+              un cultivo con intención de plantarlo no debería tener que
+              recorrer siembra, recolecta y diario para encontrar el botón. */}
+          {onPlantHere && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPlantHere();
+              }}
+              className="flex items-center justify-center gap-2 w-full rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-3 font-semibold text-white transition-colors hover:bg-cyan-400/20 cursor-pointer"
+            >
+              <Sprout size={20} />
+              Plantar en un bancal
+            </button>
+          )}
 
           <PlantInfoSection
             section="siembra"

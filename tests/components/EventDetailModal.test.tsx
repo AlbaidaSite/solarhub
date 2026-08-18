@@ -9,7 +9,7 @@
 // el enlace al portapapeles.
 
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { EventOccurrence } from "@/types/events";
@@ -99,6 +99,114 @@ beforeEach(() => {
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
 });
 
+describe("EventDetailModal · flechas entre eventos del día", () => {
+  const otro: EventOccurrence = { ...baseOccurrence, id: 7, title: "Charla" };
+  const tercero: EventOccurrence = { ...baseOccurrence, id: 9, title: "Concierto" };
+
+  it("sin más eventos ese día no hay flechas", () => {
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[baseOccurrence]}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Evento siguiente de este día" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Evento anterior de este día" }),
+    ).not.toBeInTheDocument();
+  });
+
+  // Sin onNavigate las flechas no llevarían a ninguna parte: el llamante
+  // es quien resuelve el salto (ver EventsCalendar.tsx).
+  it("sin onNavigate tampoco, aunque el día tenga varios eventos", () => {
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[baseOccurrence, otro]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Evento siguiente de este día" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("la flecha siguiente pide el evento contiguo del día", async () => {
+    const onNavigate = vi.fn();
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[baseOccurrence, otro]}
+        onNavigate={onNavigate}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Evento siguiente de este día" }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith(otro.id);
+  });
+
+  // Da la vuelta en los dos sentidos.
+  it("desde el primero, la flecha anterior lleva al último", async () => {
+    const onNavigate = vi.fn();
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[baseOccurrence, otro, tercero]}
+        onNavigate={onNavigate}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Evento anterior de este día" }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith(tercero.id);
+  });
+
+  it("desde el último, la flecha siguiente vuelve al primero", async () => {
+    const onNavigate = vi.fn();
+    render(
+      <EventDetailModal
+        occurrence={tercero}
+        dayOccurrences={[baseOccurrence, otro, tercero]}
+        onNavigate={onNavigate}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Evento siguiente de este día" }));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith(baseOccurrence.id);
+  });
+
+  // El evento abierto puede no estar en la lista del día si la caché del
+  // mes va por detrás; sin un punto de partida no hay salto que ofrecer.
+  it("si el evento abierto no está en la lista del día, no hay flechas", () => {
+    render(
+      <EventDetailModal
+        occurrence={baseOccurrence}
+        dayOccurrences={[otro, tercero]}
+        onNavigate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Evento siguiente de este día" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("EventDetailModal · guarda contra cumpleaños", () => {
   it("con un cumpleaños, no renderiza nada y avisa por consola", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -186,5 +294,49 @@ describe("EventDetailModal · compartir", () => {
     expect(copiedUrl).toContain("evento=1");
     expect(copiedUrl).toContain("fecha=2026-06-15");
     expect(await screen.findByText("Enlace copiado")).toBeInTheDocument();
+  });
+});
+
+
+describe("EventDetailModal · interés en eventos pasados", () => {
+  // Solo se falsea Date: con los temporizadores de verdad falseados,
+  // userEvent se queda esperando para siempre.
+  const freezeToday = (iso: string) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(iso));
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("un evento que ya pasó no ofrece marcar interés", () => {
+    freezeToday("2026-06-16T09:00:00Z");
+    render(<EventDetailModal occurrence={baseOccurrence} onClose={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /interés/i })).not.toBeInTheDocument();
+  });
+
+  it("el mismo día del evento todavía se puede marcar", () => {
+    freezeToday("2026-06-15T09:00:00Z");
+    render(<EventDetailModal occurrence={baseOccurrence} onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Mostrar interés" })).toBeInTheDocument();
+  });
+
+  it("un evento por venir sí lo ofrece", () => {
+    freezeToday("2026-06-01T09:00:00Z");
+    render(<EventDetailModal occurrence={baseOccurrence} onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Mostrar interés" })).toBeInTheDocument();
+  });
+
+  // Mientras no termine sigue siendo un evento en curso, no uno pasado.
+  it("un evento de varios días aguanta hasta su último día", () => {
+    freezeToday("2026-06-17T09:00:00Z");
+    render(
+      <EventDetailModal
+        occurrence={{ ...baseOccurrence, endDate: "2026-06-18T20:00:00Z" }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Mostrar interés" })).toBeInTheDocument();
   });
 });

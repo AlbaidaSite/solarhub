@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { MAX_SOW_YEAR, MIN_SOW_YEAR } from "../lib/diary";
 import type { CropDiaryEntry } from "@/types/garden";
 
@@ -36,7 +37,7 @@ export default function DiaryEntryForm({
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4">
+    <form onSubmit={submit} onKeyDown={preventEnterSubmit} className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
         <span className="text-sm font-semibold text-white/70">Año de siembra</span>
         <input

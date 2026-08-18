@@ -13,6 +13,7 @@ import {
 
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { supabase } from "@/lib/supabase/client";
 import { deactivateAccountAction } from "../../actions";
 
@@ -250,6 +251,7 @@ function EmailForm({ current }: { current: string }) {
   return (
     <form
       onSubmit={handleSubmit}
+      onKeyDown={preventEnterSubmit}
       className="w-full min-w-65 max-w-sm flex flex-col gap-6"
     >
       <p className="text-lg text text-zinc-400">
@@ -346,6 +348,7 @@ function UsernameForm({ current }: { current: string }) {
   return (
     <form
       onSubmit={handleSubmit}
+      onKeyDown={preventEnterSubmit}
       className="w-full min-w-65 max-w-sm flex flex-col gap-6"
     >
       <p className="text-lg text-zinc-400">
@@ -439,6 +442,7 @@ function PasswordForm({ currentEmail }: { currentEmail: string }) {
   return (
     <form
       onSubmit={handleSubmit}
+      onKeyDown={preventEnterSubmit}
       className="w-full min-w-65 max-w-sm flex flex-col gap-5"
     >
       <AuroraField

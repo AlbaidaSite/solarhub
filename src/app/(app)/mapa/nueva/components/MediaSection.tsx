@@ -238,6 +238,20 @@ interface MediaSectionProps {
   maxFiles?: number;
   /** Restringe a solo fotos (sin vídeo) — usado por el alta de eventos. */
   photosOnly?: boolean;
+  /**
+   * Marca la sección como obligatoria (asterisco rojo en vez de
+   * "(opcional)"). Solo cambia el rótulo: quien valida de verdad es
+   * el formulario que la usa, porque el mínimo exigible depende de si
+   * ya hay archivos guardados (ver EditPinForm.tsx). Los eventos la
+   * dejan a false: ahí la foto sigue siendo opcional.
+   */
+  required?: boolean;
+  /**
+   * Clases del rótulo de la sección. Por defecto coincide con el resto de
+   * rótulos de los formularios de pin; los de evento pasan una versión más
+   * grande para no descuadrar frente a sus propios rótulos.
+   */
+  legendClassName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +266,8 @@ export default function MediaSection({
   disabled = false,
   maxFiles = MAX_FILES,
   photosOnly = false,
+  required = false,
+  legendClassName = "text-base md:text-lg font-medium text-zinc-400 mb-3",
 }: MediaSectionProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const remaining = maxFiles - entries.length;
@@ -318,9 +334,13 @@ export default function MediaSection({
 
   return (
     <fieldset>
-      <legend className="text-sm font-medium text-zinc-400 mb-3">
+      <legend className={legendClassName}>
         {photosOnly ? "Foto" : "Multimedia"}{" "}
-        <span className="text-zinc-500 font-normal">(opcional)</span>
+        {required ? (
+          <span className="text-red-400">*</span>
+        ) : (
+          <span className="text-zinc-500 font-normal">(opcional)</span>
+        )}
       </legend>
 
       {/* Drop zone */}
@@ -367,19 +387,13 @@ export default function MediaSection({
         disabled={disabled || atMax}
       />
 
-      {/* Counter + add button */}
-      <div className="flex items-center justify-between mt-2">
+      {/* Contador. Sin botón de añadir al lado: la zona de arriba ya abre
+          el selector y es mejor sitio donde pulsar — ocupa todo el ancho,
+          admite arrastrar y soltar, y se alcanza con el teclado. */}
+      <div className="mt-2">
         <span className="text-xs text-white/40">
           {entries.length}/{maxFiles} {photosOnly ? "fotos" : "archivos"}
         </span>
-        <button
-          type="button"
-          onClick={openPicker}
-          disabled={disabled || atMax}
-          className="text-xs text-amber-300 hover:text-amber-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-        >
-          + Añadir {photosOnly ? "foto" : "archivo"}
-        </button>
       </div>
 
       {/* File grid */}

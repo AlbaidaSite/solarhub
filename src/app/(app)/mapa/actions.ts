@@ -1,9 +1,15 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUserActionClient } from "@/lib/supabase/actionAuth";
 import { getStorageUrl, STORAGE_BUCKET } from "@/lib/supabase/storage";
 import type { Pin, Sticker, PinDetail, MapMedia } from "@/types/map";
+
+// Vista que queda desfasada al crear, editar o borrar un pin. La invalida
+// la propia action: si lo hiciera el cliente con router.refresh() junto al
+// router.push(), la navegación se cancelaría (ver CromoEditForm.tsx).
+const MAP_PATH = "/mapa";
 
 type ServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
@@ -252,6 +258,7 @@ export async function createPinAction(data: CreatePinData): Promise<CreatePinRes
   if (insertError || !inserted) {
     return { ok: false, error: insertError?.message ?? "Error al guardar" };
   }
+  revalidatePath(MAP_PATH);
   return { ok: true, pinId: inserted.id };
 }
 
@@ -283,6 +290,8 @@ export async function updatePinAction(
     .eq("id", pinId);
 
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath(MAP_PATH);
   return { ok: true };
 }
 
@@ -305,6 +314,25 @@ export async function deleteMapMediaAction(
     .maybeSingle<{ path: string }>();
 
   if (!media) return { ok: false, error: "Media no encontrada." };
+
+  // Un pin no puede quedarse sin multimedia (RN: el alta y la edición lo
+  // exigen, ver NewPinForm.tsx/EditPinForm.tsx). El formulario ya desactiva
+  // el botón cuando queda un solo archivo, pero la regla se sostiene aquí:
+  // es el único punto por el que pasan tanto el dueño como el staff. Para
+  // sustituir el último archivo hay que subir el nuevo y guardar primero.
+  const { data: siblings } = await supabase
+    .from("map_media")
+    .select("id")
+    .eq("pin_id", pinId)
+    .returns<Array<{ id: number }>>();
+
+  if ((siblings ?? []).length <= 1) {
+    return {
+      ok: false,
+      error:
+        "La pegatina debe conservar al menos un archivo multimedia. Sube otro antes de borrar este.",
+    };
+  }
 
   await supabase.storage.from(STORAGE_BUCKET).remove([media.path]);
 
@@ -338,6 +366,8 @@ export async function deletePinAction(pinId: number): Promise<MapActionResult> {
 
   const { error } = await supabase.from("pin").delete().eq("id", pinId);
   if (error) return { ok: false, error: error.message };
+
+  revalidatePath(MAP_PATH);
   return { ok: true };
 }
 

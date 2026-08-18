@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import MonthPicker from "./MonthPicker";
 import { formatMonthList } from "../lib/monthNames";
 import { updatePlantSectionAction, type PlantSection } from "../actions";
@@ -106,7 +107,7 @@ export default function PlantInfoSection({
       </div>
 
       {isEditing ? (
-        <form onSubmit={submit} className="flex flex-col gap-4">
+        <form onSubmit={submit} onKeyDown={preventEnterSubmit} className="flex flex-col gap-4">
           <label className="flex flex-col gap-1">
             <span className="text-sm font-semibold text-white/70">{text.infoLabel}</span>
             <textarea
@@ -151,7 +152,7 @@ export default function PlantInfoSection({
           {/* Etiqueta y meses en un solo nodo de texto, sin partirlo en
               varios <span>: es una frase, y así se lee (y se busca) como
               tal. */}
-          <p className="text-sm text-white/60">
+          <p className="text-lg text-white/70">
             {`${text.monthsLabel}: ${formatMonthList(current.months) || "sin definir"}`}
           </p>
         </>

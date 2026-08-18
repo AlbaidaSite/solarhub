@@ -4,7 +4,8 @@ import Image from "next/image";
 import { BellOff, BellRing, Cake } from "lucide-react";
 import { eventTypeClasses } from "@/lib/eventTypeClasses";
 import { isBirthday, type EventOccurrence } from "@/types/events";
-import { formatEventTime } from "../lib/formatting";
+import { formatEventTime, todayInMadrid } from "../lib/formatting";
+import { isPastOccurrence } from "../lib/eventOccurrences";
 
 const WEEKDAY_TZ = "UTC";
 
@@ -106,23 +107,26 @@ export default function EventListRow({
       {/* Campana de interés: a la derecha de la fila, para TODOS los
           eventos (cumpleaños incluidos) — a diferencia de editar/eliminar
           o de abrir el detalle, mostrar interés no depende de tener un
-          modal de detalle al que ir. */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleInterest(occurrence);
-        }}
-        disabled={isInterestPending}
-        aria-label={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
-        aria-pressed={occurrence.liked}
-        title={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/60 hover:bg-black/80 transition-colors cursor-pointer disabled:opacity-50 ${
-          occurrence.liked ? "text-yellow-400 hover:text-white" : "text-white/80 hover:text-white"
-        }`}
-      >
-        {occurrence.liked ? <BellRing size={16} /> : <BellOff size={16} />}
-      </button>
+          modal de detalle al que ir. Se cae del listado en los eventos que
+          ya pasaron, que no admiten interés. */}
+      {!isPastOccurrence(occurrence, todayInMadrid()) && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleInterest(occurrence);
+          }}
+          disabled={isInterestPending}
+          aria-label={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
+          aria-pressed={occurrence.liked}
+          title={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/60 hover:bg-black/80 transition-colors cursor-pointer disabled:opacity-50 ${
+            occurrence.liked ? "text-yellow-400 hover:text-white" : "text-white/80 hover:text-white"
+          }`}
+        >
+          {occurrence.liked ? <BellRing size={16} /> : <BellOff size={16} />}
+        </button>
+      )}
     </div>
   );
 }

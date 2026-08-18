@@ -6,6 +6,7 @@ interface PlantGroupListProps {
   plants: Plant[];
   onPlantSelect?: (plantId: number) => void;
   onPlantDragStart?: (plant: Plant, event: React.PointerEvent) => void;
+  onPlantLongPress?: (plantId: number) => void;
 }
 
 // La cabecera se muestra siempre, incluso vacía: ocultarla haría que el
@@ -15,6 +16,7 @@ export default function PlantGroupList({
   plants,
   onPlantSelect,
   onPlantDragStart,
+  onPlantLongPress,
 }: PlantGroupListProps) {
   return (
     <section>
@@ -29,6 +31,7 @@ export default function PlantGroupList({
               plant={plant}
               onSelect={onPlantSelect}
               onDragStart={onPlantDragStart}
+              onLongPress={onPlantLongPress}
             />
           ))}
         </div>

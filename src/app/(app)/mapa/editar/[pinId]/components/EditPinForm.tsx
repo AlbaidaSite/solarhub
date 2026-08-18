@@ -18,6 +18,7 @@ import {
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
 import { parseCoordinates } from "@/lib/parseCoordinates";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { supabase } from "@/lib/supabase/client";
 import {
   addMapMediaAction,
@@ -134,6 +135,15 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
   const hasProcessing = mediaEntries.some((e) => e.status === "processing");
   const hasMediaErrors = mediaEntries.some((e) => e.status === "error");
   const readyEntries = mediaEntries.filter((e) => e.status === "ready");
+
+  // Multimedia con la que se quedaría el pin al guardar. El borrado de
+  // los archivos ya guardados es inmediato (no se difiere al submit), así
+  // que `existingMedia` ya refleja lo que hay en BD en este momento.
+  const totalMediaAfterSave = existingMedia.length + readyEntries.length;
+  // Quitar el último archivo dejaría el pin sin multimedia, y el servidor
+  // lo rechaza (ver deleteMapMediaAction). Para sustituirlo hay que subir
+  // el nuevo y guardar primero.
+  const canDeleteExistingMedia = existingMedia.length > 1;
 
   // ---------------------------------------------------------------------------
   // Country dropdown: close on outside click
@@ -264,6 +274,12 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
     if (!dateValue) { setSubmitError("La fecha es obligatoria"); return; }
     if (hasProcessing) { setSubmitError("Espera a que terminen de procesarse los archivos"); return; }
     if (hasMediaErrors) { setSubmitError("Elimina los archivos con error antes de guardar"); return; }
+    // Multimedia obligatorio, igual que en el alta. Solo puede saltar en
+    // pines antiguos, creados cuando el campo aún era opcional.
+    if (totalMediaAfterSave === 0) {
+      setSubmitError("La pegatina necesita al menos una foto o un vídeo");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -285,7 +301,6 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
       if (readyEntries.length === 0) {
         router.push("/mapa");
-        router.refresh();
         return;
       }
 
@@ -294,7 +309,6 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
       if (failures.length === 0) {
         router.push("/mapa");
-        router.refresh();
       } else {
         setUploadFailures(failures);
         setSubmitPhase("partial_error");
@@ -321,7 +335,6 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
     if (failures.length === 0) {
       router.push("/mapa");
-      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -331,6 +344,12 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
   // ---------------------------------------------------------------------------
   // Upload progress / error view
   // ---------------------------------------------------------------------------
+
+  // Archivos que SÍ llegaron a adjuntarse en esta ronda. Junto con los ya
+  // guardados dicen si el pin cumple o no el mínimo de multimedia.
+  const attachedCount = Object.values(uploadStatuses).filter(
+    (st) => st.kind === "ok",
+  ).length;
 
   if (submitPhase === "uploading" || submitPhase === "partial_error") {
     return (
@@ -344,7 +363,9 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
           )}
           {submitPhase === "partial_error" && (
             <p className="text-chip text-amber-300 text-sm">
-              El pin se actualizó correctamente pero algunos archivos no se pudieron subir.
+              {existingMedia.length + attachedCount > 0
+                ? "El pin se actualizó correctamente pero algunos archivos no se pudieron subir."
+                : "El pin se actualizó pero no se pudo subir ningún archivo, así que sigue sin multimedia. Reinténtalo para completarlo."}
             </p>
           )}
           <div className="flex flex-col gap-3">
@@ -381,7 +402,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
               </CornerButton>
               <button
                 type="button"
-                onClick={() => { router.push("/mapa"); router.refresh(); }}
+                onClick={() => { router.push("/mapa"); }}
                 className="text-sm text-white/50 hover:text-white transition-colors self-start cursor-pointer"
               >
                 Continuar sin esos archivos
@@ -411,11 +432,15 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
       <h1 className="text-3xl font-bold text-white mb-8">Editar pegatina</h1>
 
-      <form onSubmit={handleSubmit} className="w-full max-w-lg flex flex-col gap-8">
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={preventEnterSubmit}
+        className="w-full max-w-lg flex flex-col gap-8"
+      >
 
         {/* 1. Sticker selector */}
         <fieldset>
-          <legend className="text-sm font-medium text-zinc-400 mb-3">
+          <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
             Pegatina <span className="text-red-400">*</span>
           </legend>
           <div className="grid grid-cols-5 gap-2">
@@ -451,9 +476,35 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
           )}
         </fieldset>
 
-        {/* 2. Country combobox */}
+        {/* 2. Place */}
+        <div className="flex flex-col gap-1">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
+            Lugar donde se colocó <span className="text-red-400">*</span>
+          </label>
+          <AuroraField
+            type="text"
+            placeholder="Ej: Parque del Retiro"
+            value={place}
+            onChange={(e) => setPlace(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+
+        {/* 3. State (optional) */}
+        <div className="flex flex-col gap-1">
+          <label className="text-base md:text-lg font-medium text-zinc-400">Ciudad</label>
+          <AuroraField
+            type="text"
+            placeholder="Ej: Sevilla"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+
+        {/* 4. Country combobox */}
         <div ref={countryWrapperRef} className="relative flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             País <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -486,35 +537,9 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
           )}
         </div>
 
-        {/* 3. State (optional) */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">Provincia</label>
-          <AuroraField
-            type="text"
-            placeholder="Ej: Sevilla"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
-
-        {/* 4. Place */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
-            Lugar <span className="text-red-400">*</span>
-          </label>
-          <AuroraField
-            type="text"
-            placeholder="Ej: Parque del Retiro"
-            value={place}
-            onChange={(e) => setPlace(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
-
         {/* 5. Coordinates */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Coordenadas <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -541,8 +566,8 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
 
         {/* 6. Date */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
-            Fecha <span className="text-red-400">*</span>
+          <label className="text-base md:text-lg font-medium text-zinc-400">
+            Fecha en la que se colocó <span className="text-red-400">*</span>
           </label>
           <AuroraField
             type="date"
@@ -557,7 +582,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
         {/* 7. Existing media */}
         {existingMedia.length > 0 && (
           <fieldset>
-            <legend className="text-sm font-medium text-zinc-400 mb-3">
+            <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
               Multimedia actual
             </legend>
             {deleteMediaError && (
@@ -601,8 +626,15 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
                     <button
                       type="button"
                       onClick={() => handleDeleteExistingMedia(m.id)}
-                      disabled={isDeleting || deletingMediaId !== null}
+                      disabled={
+                        isDeleting || deletingMediaId !== null || !canDeleteExistingMedia
+                      }
                       aria-label="Eliminar archivo"
+                      title={
+                        canDeleteExistingMedia
+                          ? "Eliminar archivo"
+                          : "Es el único archivo de la pegatina: sube otro y guarda antes de poder borrarlo"
+                      }
                       className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white/60 hover:text-red-400 hover:bg-black/80 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Trash2 size={11} />
@@ -611,6 +643,13 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
                 );
               })}
             </div>
+            {!canDeleteExistingMedia && (
+              <p className="mt-3 text-xs text-white/40">
+                Una pegatina no puede quedarse sin multimedia. Para sustituir
+                este archivo, sube el nuevo y guarda; después ya podrás
+                borrar el antiguo.
+              </p>
+            )}
           </fieldset>
         )}
 
@@ -621,6 +660,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
           onRemove={handleRemoveMedia}
           onUpdate={handleUpdateMedia}
           maxFiles={Math.max(0, 5 - existingMedia.length)}
+          required={existingMedia.length === 0}
         />
 
         {/* Submit error */}

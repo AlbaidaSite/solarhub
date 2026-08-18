@@ -14,6 +14,18 @@ interface RegisterCromoFormProps {
   categories: Category[];
 }
 
+// Lado de la rejilla 4x4. Antes era fijo (240px) y en pantallas grandes
+// dejaba la vista entera flotando en un mar de negro.
+//
+// El término del medio es el que manda al bajar la altura: descuenta a la
+// ventana todo lo que va por encima y por debajo de la rejilla —el hueco
+// del navbar, los dos títulos, la fila de categorías, los huecos entre
+// bloques y el botón de registrar— para que la rejilla ceda sitio antes
+// que ellos y "Registrar" siga a la vista. Por debajo de unos 620px de
+// alto ya no hay reparto posible: gana el mínimo y la vista pasa a
+// desplazarse, que es preferible a una rejilla ilegible.
+const GRID_SIDE = "clamp(11rem, min(80vw, 100dvh - 27.5rem), 25rem)";
+
 export default function RegisterCromoForm({ categories }: RegisterCromoFormProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [cells, setCells] = useState<boolean[]>(() => Array(CELL_COUNT).fill(false));
@@ -66,18 +78,21 @@ export default function RegisterCromoForm({ categories }: RegisterCromoFormProps
   return (
     <div className="w-full flex flex-col items-center gap-8 pb-12">
       {/* Categorías */}
-      <div className="flex flex-wrap justify-center gap-3 px-4">
-        {categories.map((c) => (
-          <FilterIconButton
-            key={c.id}
-            iconUrl={c.icon_path}
-            label={c.name}
-            active={selectedCategoryId === c.id}
-            size="lg"
-            onClick={() => handleCategoryChange(c.id)}
-          />
-        ))}
-      </div>
+      <section className="flex flex-col items-center gap-4">
+        <h2 className="text-xl font-bold text-white">Selecciona categoría</h2>
+        <div className="flex flex-wrap justify-center gap-3 px-4">
+          {categories.map((c) => (
+            <FilterIconButton
+              key={c.id}
+              iconUrl={c.icon_path}
+              label={c.name}
+              active={selectedCategoryId === c.id}
+              size="xl"
+              onClick={() => handleCategoryChange(c.id)}
+            />
+          ))}
+        </div>
+      </section>
 
       {/* Grid 4x4 — dos capas independientes:
           · Capa inferior: 16 botones a tamaño completo de la celda.
@@ -85,7 +100,15 @@ export default function RegisterCromoForm({ categories }: RegisterCromoFormProps
           Los botones pueden sobresalir del hueco interior del anillo;
           la capa de anillos (encima, con pointer-events-none) garantiza
           que el contorno del grid quede siempre íntegro y sin huecos. */}
-      <div className="relative w-60 max-w-xs">
+      <section className="flex flex-col items-center gap-4">
+        <h2 className="text-xl font-bold text-white">Replica patrón del dorso</h2>
+        {/* El lado crece con la ventana, acotado por sus dos dimensiones:
+            la rejilla es cuadrada y tiene que caber a lo alto junto con
+            las categorías, el mensaje y los botones. Los desplazamientos
+            de -4px de cada celda son los que solapan los anillos entre sí
+            y no dependen del tamaño, así que esto se puede escalar sin
+            tocar nada más. */}
+        <div className="relative" style={{ width: GRID_SIDE }}>
         {/* Capa 1 — Botones (debajo, clickables) */}
         <div className="grid grid-cols-4">
           {cells.map((on, i) => {
@@ -128,7 +151,8 @@ export default function RegisterCromoForm({ categories }: RegisterCromoFormProps
             );
           })}
         </div>
-      </div>
+        </div>
+      </section>
 
       {/* Mensaje */}
       {message && (

@@ -6,7 +6,7 @@
 // ese día, Escape cierra y bloqueo de scroll del fondo.
 
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { EventOccurrence } from "@/types/events";
@@ -193,5 +193,62 @@ describe("EventListModal · nuevo evento y cierre", () => {
     expect(main.style.overflow).toBe("hidden");
     unmount();
     expect(main.style.overflow).toBe("auto");
+  });
+});
+
+
+describe("EventListModal · interés en eventos pasados", () => {
+  // Solo Date: falsear también los temporizadores cuelga a userEvent.
+  const freezeToday = (iso: string) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(iso));
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("una fila de un evento pasado no lleva campana", () => {
+    freezeToday("2026-06-16T09:00:00Z");
+    render(
+      <EventListModal
+        dateKey="2026-06-15"
+        occurrences={[makeOccurrence({ id: 1 })]}
+        onSelectEvent={vi.fn()}
+        onCreateEvent={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /interés/i })).not.toBeInTheDocument();
+  });
+
+  it("una fila de un evento por venir sí la lleva", () => {
+    freezeToday("2026-06-01T09:00:00Z");
+    render(
+      <EventListModal
+        dateKey="2026-06-15"
+        occurrences={[makeOccurrence({ id: 1 })]}
+        onSelectEvent={vi.fn()}
+        onCreateEvent={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Mostrar interés" })).toBeInTheDocument();
+  });
+
+  // Un cumpleaños vuelve cada año, así que mirar el de marzo en agosto no
+  // lo convierte en pasado: su campana sigue ahí.
+  it("un cumpleaños conserva la campana aunque su día ya haya pasado", () => {
+    freezeToday("2026-08-18T09:00:00Z");
+    render(
+      <EventListModal
+        dateKey="2026-06-15"
+        occurrences={[makeBirthday({ id: 2 })]}
+        onSelectEvent={vi.fn()}
+        onCreateEvent={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Mostrar interés" })).toBeInTheDocument();
   });
 });
