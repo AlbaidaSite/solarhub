@@ -3,6 +3,7 @@
 import { plantColorClasses } from "@/lib/plantColorClasses";
 import { subcellsFor } from "../lib/subcells";
 import { BED_STROKE_WIDTH } from "../lib/canvas";
+import { bedSummary } from "../lib/bedCrops";
 import type { GardenBed, Plant, PlantBed } from "@/types/garden";
 
 // Grosor del contorno de un cultivo, en píxeles de PANTALLA: con
@@ -33,7 +34,14 @@ interface BedShapeProps {
   // una subcelda de más: los cultivos existentes se compactan solos, sin
   // estado intermedio, porque la división se recalcula con uno más.
   preview?: BedPreview | null;
-  onSelect?: (bedId: number) => void;
+  // Las coordenadas del toque solo llegan desde el puntero; activando con
+  // teclado no hay ninguna. Quien las recibe decide en qué posición del
+  // bancal cae (ver insertionIndexFor), y sin ellas añade al final.
+  onSelect?: (bedId: number, clientX?: number, clientY?: number) => void;
+  // Puntero de ratón entrando o saliendo del bancal. Se pasa el rectángulo en
+  // pantalla en vez de las coordenadas del cursor para que el recuadro quede
+  // anclado al bancal y no tiemble al mover el ratón por dentro.
+  onHoverChange?: (bed: GardenBed | null, rect?: DOMRect) => void;
 }
 
 interface CropEntry {
@@ -42,11 +50,31 @@ interface CropEntry {
   isPreview: boolean;
 }
 
-export default function BedShape({ bed, rows, plantsById, preview, onSelect }: BedShapeProps) {
+export default function BedShape({
+  bed,
+  rows,
+  plantsById,
+  preview,
+  onSelect,
+  onHoverChange,
+}: BedShapeProps) {
   const entries = cropEntries(rows, plantsById, preview);
   const subcells = subcellsFor(bed, entries.length);
   const interactive = onSelect != null;
-  const label = bedTooltip(bed, rows, plantsById);
+  const label = bedSummary(bed, rows, plantsById);
+
+  // pointerenter/leave y no over/out: los primeros no se disparan al pasar de
+  // un hijo a otro dentro del bancal, así que el recuadro no parpadea al
+  // cruzar de una subcelda de cultivo a la siguiente.
+  const handleEnter = onHoverChange
+    ? (e: React.PointerEvent<SVGGElement>) => {
+        // Solo ratón: en táctil no hay hover, y el toque abre el modal. Con un
+        // botón pulsado se está arrastrando un cultivo hasta aquí, no
+        // consultando lo que hay plantado.
+        if (e.pointerType !== "mouse" || e.buttons !== 0) return;
+        onHoverChange(bed, e.currentTarget.getBoundingClientRect());
+      }
+    : undefined;
 
   return (
     <g
@@ -56,7 +84,17 @@ export default function BedShape({ bed, rows, plantsById, preview, onSelect }: B
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       aria-label={interactive ? label : undefined}
-      onClick={interactive ? () => onSelect(bed.id) : undefined}
+      onClick={
+        interactive
+          ? (e) => {
+              // Sin esto el clic sigue subiendo hasta el contenedor de la
+              // vista, que en modo "plantar" lo lee como toque fuera de un
+              // bancal y cancela justo lo que se acaba de hacer.
+              e.stopPropagation();
+              onSelect(bed.id, e.clientX, e.clientY);
+            }
+          : undefined
+      }
       onKeyDown={
         interactive
           ? (e) => {
@@ -67,9 +105,21 @@ export default function BedShape({ bed, rows, plantsById, preview, onSelect }: B
             }
           : undefined
       }
+      onPointerEnter={handleEnter}
+      onPointerLeave={onHoverChange ? () => onHoverChange(null) : undefined}
+      onPointerDown={(e) => {
+        // Al abrir el modal o empezar a arrastrar, el recuadro sobra.
+        onHoverChange?.(null);
+        // Y no debe seguir subiendo: la vista lee un pointerdown fuera de un
+        // bancal como "se ha arrepentido" y cancela el cultivo a la espera.
+        e.stopPropagation();
+      }}
       className={interactive ? "cursor-pointer focus:outline-none" : undefined}
     >
-      <title>{label}</title>
+      {/* Sin <title>: el tooltip nativo que genera no se puede agrandar ni dar
+          formato, y saldría además del recuadro propio (ver GardenCanvas). La
+          etiqueta accesible la da aria-label cuando el bancal es clicable, y
+          la lista sr-only del lienzo cuando no lo es. */}
       <rect
         x={bed.pos_x}
         y={bed.pos_y}
@@ -151,14 +201,3 @@ function cropEntries(
   return entries;
 }
 
-function bedTooltip(bed: GardenBed, rows: PlantBed[], plantsById: Map<number, Plant>): string {
-  if (rows.length === 0) return `${bed.name}: vacío`;
-  const crops = rows
-    .map((pb) => {
-      const plant = pb.plant_id != null ? plantsById.get(pb.plant_id) : undefined;
-      const name = plant?.name ?? "cultivo sin identificar";
-      return pb.description ? `${name} (${pb.description})` : name;
-    })
-    .join(", ");
-  return `${bed.name}: ${crops}`;
-}

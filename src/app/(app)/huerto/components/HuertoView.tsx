@@ -59,6 +59,13 @@ export default function HuertoView({
   const [selectedBedId, setSelectedBedId] = useState<number | null>(null);
   const [selectedPlantId, setSelectedPlantId] = useState<number | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
+  // Cultivo elegido en movil y a la espera de que se toque un bancal. En
+  // escritorio siempre es null: alli se planta arrastrando.
+  const [plantingPlantId, setPlantingPlantId] = useState<number | null>(null);
+  // El servidor todavia no ha contestado a un toque anterior. Evita que dos
+  // toques seguidos planten el cultivo dos veces, y no esta en el estado
+  // porque no se pinta nada con el.
+  const plantingPendingRef = useRef(false);
 
   // Arrastre desde el panel de cultivos. Lo que hace falta para decidir
   // (planta, puntero, si ya se movió) vive en un ref y no en el estado:
@@ -85,6 +92,11 @@ export default function HuertoView({
 
   const plantsById = useMemo(() => new Map(plants.map((p) => [p.id, p])), [plants]);
   const distribution = useMemo(() => bedsForDistribution(plantBeds, mode), [plantBeds, mode]);
+
+  // Plantar tocando existe solo donde no existe el arrastre, y con el mismo
+  // permiso: garden manager o staff. Las dos vias nunca estan activas a la vez.
+  const canTapPlant = canManage && !isDesktop;
+  const plantingPlant = plantingPlantId != null ? plantsById.get(plantingPlantId) : undefined;
 
   useEffect(() => {
     getGardenPermissionAction().then((result) => setCanManage(result.canManage));
@@ -118,6 +130,36 @@ export default function HuertoView({
 
   const handlePlantChange = useCallback((updated: Plant) => {
     setPlants((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+  }, []);
+
+  // ─── Plantar tocando (movil) ──────────────────────────────────────────
+
+  // Se entra desde la ficha del cultivo. Cierra los dos modales: la ficha
+  // puede estar abierta ENCIMA del modal de un bancal, y dejar ese debajo
+  // taparia justo los bancales que hay que tocar ahora.
+  const startTapPlanting = useCallback((plantId: number) => {
+    setSelectedPlantId(null);
+    setSelectedBedId(null);
+    setDropError(null);
+    plantingPendingRef.current = false;
+    setPlantingPlantId(plantId);
+    setTab("bancal");
+  }, []);
+
+  const cancelTapPlanting = useCallback(() => {
+    setPlantingPlantId(null);
+    setDropError(null);
+  }, []);
+
+  // Cambiar de pestaña cancela igual que tocar fuera de un bancal, y hace
+  // falta hacerlo aqui a mano: react-aria detiene la propagacion del clic de
+  // una pestaña, asi que el onClick de la raiz no llega a enterarse. Sin
+  // esto el cultivo se quedaria esperando con su barra escondida en el panel
+  // que se acaba de abandonar.
+  const handleTabChange = useCallback((next: HuertoTab) => {
+    setPlantingPlantId(null);
+    setDropError(null);
+    setTab(next);
   }, []);
 
   // ─── Arrastrar un cultivo del panel hasta un bancal ────────────────────
@@ -227,6 +269,55 @@ export default function HuertoView({
     };
   }, [isDragging, beds, distribution, isFuture, handlePlantSelect, replaceBedRows, updatePreview]);
 
+  // Tocar un bancal significa una cosa u otra segun haya un cultivo a la
+  // espera: plantarlo ahi, o abrir el bancal para consultarlo.
+  const handleBedSelect = useCallback(
+    (bedId: number, clientX?: number, clientY?: number) => {
+      if (plantingPlantId == null) {
+        setSelectedBedId(bedId);
+        return;
+      }
+      if (plantingPendingRef.current) return;
+
+      const bed = beds.find((b) => b.id === bedId);
+      if (!bed) return;
+      const rows = distribution.get(bedId) ?? [];
+
+      // Se planta en el punto tocado, igual que al soltar en escritorio. Sin
+      // coordenadas utilizables -activacion por teclado, o un entorno sin
+      // getScreenCTM- se anade al final en lugar de inventar una posicion.
+      const point =
+        clientX != null && clientY != null
+          ? clientToCanvasPoint(svgRef.current, clientX, clientY)
+          : null;
+      const index =
+        point && bedAtPoint([bed], point)
+          ? insertionIndexFor(bed, rows.length, point)
+          : rows.length;
+
+      plantingPendingRef.current = true;
+      setDropError(null);
+      addPlantBedAction({
+        gardenBedId: bedId,
+        plantId: plantingPlantId,
+        description: null,
+        isFuture,
+        index,
+      }).then((result) => {
+        plantingPendingRef.current = false;
+        if (result.ok) {
+          replaceBedRows(bedId, isFuture, result.rows);
+          setPlantingPlantId(null);
+        } else {
+          // Se sigue esperando un bancal: el error suele ser "aqui no cabe",
+          // y obligar a repetir el gesto entero para probar en otro sobra.
+          setDropError(result.error);
+        }
+      });
+    },
+    [plantingPlantId, beds, distribution, isFuture, replaceBedRows],
+  );
+
   // ─── Modal de bancal ───────────────────────────────────────────────────
 
   const selectedBed = selectedBedId != null ? beds.find((b) => b.id === selectedBedId) : undefined;
@@ -250,12 +341,30 @@ export default function HuertoView({
     // ancestro se estiraría con el contenido en vez de al revés). Con
     // el alto ya resuelto explícitamente, el resto de la cadena
     // (min-h-0 hacia abajo) sí reparte el hueco real correctamente.
+    //
+    // Por debajo de `nav` (650px) no hay navbar, solo el botón de menú
+    // flotante, que acaba a 72px del borde: de los 8rem de pt-32 sobran
+    // casi 4 y el lienzo se quedaba sin sitio. El margen negativo
+    // recupera 3rem sin tocar el padding del <main>, que es de toda la
+    // app, y el alto se ajusta en la misma medida. El punto de corte es
+    // `nav` y no `md` porque lo que decide es qué navegación hay
+    // arriba, no cómo se reparte esta vista.
     <div
-      className={`flex flex-col gap-4 h-[calc(100dvh-8rem)] min-h-0 ${
+      // Con un cultivo a la espera, cualquier toque que no sea un bancal
+      // cancela: los bancales paran la propagacion (ver BedShape), asi que
+      // aqui solo llega lo demas, el boton de Cancelar incluido.
+      //
+      // Va en pointerdown y no en click a proposito. La pulsacion larga que
+      // inicia el modo termina con el dedo levantandose, y ese click de
+      // rebote llegaba hasta aqui y cancelaba justo lo que acababa de
+      // empezar. Su pointerdown, en cambio, sucede antes de que el modo
+      // exista, asi que no puede cancelarse a si mismo.
+      onPointerDown={plantingPlantId != null ? cancelTapPlanting : undefined}
+      className={`flex flex-col gap-3 md:gap-4 -mt-12 h-[calc(100dvh-5rem)] nav:mt-0 nav:h-[calc(100dvh-8rem)] min-h-0 ${
         isDragging ? "select-none" : ""
       }`}
     >
-      <HuertoTabs tab={tab} onChange={setTab} />
+      <HuertoTabs tab={tab} onChange={handleTabChange} />
 
       <div className="flex flex-col gap-4 flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:gap-6">
         <section
@@ -265,14 +374,44 @@ export default function HuertoView({
           className={`${tab === "bancal" ? "flex" : "hidden"} md:flex flex-col gap-4 h-full min-h-0`}
         >
           <ModeToggle mode={mode} onChange={setMode} />
+          {plantingPlant && (
+            <div
+              role="status"
+              className="flex items-center justify-center gap-3 rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-2"
+            >
+              <div className="relative h-8 w-8 shrink-0">
+                <Image
+                  src={plantingPlant.icon_path}
+                  alt=""
+                  fill
+                  sizes="32px"
+                  className="object-contain"
+                />
+              </div>
+              <p className="text-sm text-white">
+                Toca un bancal para plantar{" "}
+                <strong className="font-semibold">{plantingPlant.name}</strong>
+              </p>
+              {/* No necesita onClick propio: el clic sube hasta la raiz, que
+                  con un cultivo a la espera ya cancela. Es un boton de verdad
+                  para que se pueda enfocar y activar con teclado. */}
+              <button
+                type="button"
+                className="shrink-0 rounded-md px-2 py-1 text-sm text-red-300/80 transition-colors hover:text-amber-300 cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
           {dropError && (
             <p role="alert" className="text-sm text-red-400 text-center">
               {dropError}
             </p>
           )}
-          {/* pb-6: margen respecto al borde inferior, para que el
-              lienzo no quede pegado al fondo de la ventana. */}
-          <div className="flex items-center justify-center flex-1 min-h-0 pb-6">
+          {/* pb: margen respecto al borde inferior, para que el lienzo no
+              quede pegado al fondo de la ventana. Más corto en móvil, donde
+              cada píxel de alto se nota en el tamaño del bancal. */}
+          <div className="flex items-center justify-center flex-1 min-h-0 pb-2 md:pb-6">
             <GardenCanvas
               beds={beds}
               distribution={distribution}
@@ -282,8 +421,9 @@ export default function HuertoView({
               preview={preview}
               // Abrir un bancal es consultar lo que tiene plantado, así que
               // no depende del permiso: lo que decide canManage es qué
-              // botones enseña el modal una vez abierto.
-              onBedSelect={setSelectedBedId}
+              // botones enseña el modal una vez abierto. Con un cultivo a la
+              // espera el mismo toque planta en vez de abrir.
+              onBedSelect={handleBedSelect}
             />
           </div>
         </section>
@@ -304,6 +444,7 @@ export default function HuertoView({
             onMonthChange={setMonth}
             onPlantSelect={handlePlantSelect}
             onPlantDragStart={canManage && isDesktop ? handlePlantDragStart : undefined}
+            onPlantLongPress={canTapPlant ? startTapPlanting : undefined}
           />
         </section>
       </div>
@@ -347,6 +488,9 @@ export default function HuertoView({
           canManage={canManage}
           onClose={() => setSelectedPlantId(null)}
           onPlantChange={handlePlantChange}
+          onPlantHere={
+            canTapPlant ? () => startTapPlanting(selectedPlant.id) : undefined
+          }
         />
       )}
     </div>

@@ -203,6 +203,33 @@ describe("BedModal — vaciar el bancal", () => {
     expect(onRowsChange).toHaveBeenCalledWith([]);
   });
 
+  // Vaciar deja la lista sin nada que enseñar: lo que interesa ver es cómo
+  // queda el bancal en el lienzo, que está detrás del modal.
+  it("al vaciar se cierra el modal para dejar ver el bancal", async () => {
+    const user = userEvent.setup();
+    clearBedCropsAction.mockResolvedValue({ ok: true });
+    const { onClose } = renderModal({ rows: [row({ id: 1 })] });
+
+    await user.click(screen.getByRole("button", { name: "Vaciar Bancal" }));
+    await user.click(screen.getByRole("button", { name: "Sí, estoy seguro" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("si el servidor lo rechaza, el modal sigue abierto con el error", async () => {
+    const user = userEvent.setup();
+    clearBedCropsAction.mockResolvedValue({ ok: false, error: "No tienes permiso." });
+    const { onClose } = renderModal();
+
+    await user.click(screen.getByRole("button", { name: "Vaciar Bancal" }));
+    await user.click(screen.getByRole("button", { name: "Sí, estoy seguro" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    expect(await screen.findByText("No tienes permiso.")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("si el servidor lo rechaza, el error se ve y no se toca la lista", async () => {
     const user = userEvent.setup();
     clearBedCropsAction.mockResolvedValue({ ok: false, error: "No tienes permiso." });

@@ -19,6 +19,9 @@ interface CropPanelProps {
   // Solo llega en escritorio y con permiso de edición: es lo que habilita
   // arrastrar un icono hasta un bancal.
   onPlantDragStart?: (plant: Plant, event: React.PointerEvent) => void;
+  // Su equivalente en móvil: mantener pulsado un icono. Su sola presencia es
+  // lo que decide si se enseña la pista del gesto.
+  onPlantLongPress?: (plantId: number) => void;
 }
 
 export default function CropPanel({
@@ -27,6 +30,7 @@ export default function CropPanel({
   onMonthChange,
   onPlantSelect,
   onPlantDragStart,
+  onPlantLongPress,
 }: CropPanelProps) {
   if (plants.length === 0) {
     return <p className="text-white/40">No hay plantas registradas en el sistema.</p>;
@@ -57,24 +61,36 @@ export default function CropPanel({
         </button>
       </div>
 
+      {/* Nadie descubre solo una pulsación larga: si está disponible, se
+          dice. Va arriba del listado porque abajo quedaría fuera de pantalla
+          justo en los grupos donde hay que desplazarse. */}
+      {onPlantLongPress && (
+        <p className="mb-4 text-center text-xs text-white/40">
+          Mantén pulsado un cultivo para plantarlo en un bancal.
+        </p>
+      )}
+
       <div className="space-y-6">
         <PlantGroupList
           title="Siembra"
           plants={groups.siembra}
           onPlantSelect={onPlantSelect}
           onPlantDragStart={onPlantDragStart}
+          onPlantLongPress={onPlantLongPress}
         />
         <PlantGroupList
           title="Recogida"
           plants={groups.recogida}
           onPlantSelect={onPlantSelect}
           onPlantDragStart={onPlantDragStart}
+          onPlantLongPress={onPlantLongPress}
         />
         <PlantGroupList
           title="Otros"
           plants={groups.otros}
           onPlantSelect={onPlantSelect}
           onPlantDragStart={onPlantDragStart}
+          onPlantLongPress={onPlantLongPress}
         />
       </div>
     </div>
