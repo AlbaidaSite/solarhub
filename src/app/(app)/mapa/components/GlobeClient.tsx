@@ -107,6 +107,12 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
   const [clusterPopupPins, setClusterPopupPins] = useState<Pin[] | null>(null);
   const loadingPinIdRef = useRef<number | null>(null);
 
+  // Con un overlay abierto (detalle de pin o popup de cluster) el mapa
+  // queda congelado: ni hover, ni clic, ni zoom, ni foco de teclado. Es
+  // una sola bandera y no dos comprobaciones sueltas para que los tres
+  // bloqueos no puedan desincronizarse.
+  const overlayOpen = modalDetail !== null || clusterPopupPins !== null;
+
   // Formatear fecha
   const formatDate = useCallback((dateStr: string) => {
     const date = new Date(dateStr);
@@ -301,6 +307,7 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
   // Detectar interacción en pines y mostrar tooltip + manejar clicks
   useEffect(() => {
     const handleMouseEnter = (e: MouseEvent) => {
+      if (overlayOpen) return;
       let target = e.target as Element | null;
       target = target?.closest?.("[data-pin-id]") ?? null;
       if (!target) return;
@@ -329,6 +336,7 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
     };
 
     const handleClick = (e: MouseEvent) => {
+      if (overlayOpen) return;
       const targetEl = e.target as Element | null;
 
       // Click sobre cluster
@@ -360,6 +368,11 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
     // de funcionar. Este handler reenvía el wheel al canvas para que el
     // zoom siga activo independientemente de dónde esté el cursor.
     const handleWheel = (e: WheelEvent) => {
+      // Sin esta guarda, rodar la rueda sobre el modal (que se monta
+      // dentro de este mismo contenedor, por lo que el evento burbujea
+      // hasta aquí) reenviaba el wheel al canvas y el globo seguía
+      // haciendo zoom por detrás.
+      if (overlayOpen) return;
       const canvas = globeContainer?.querySelector<HTMLCanvasElement>("canvas");
       if (canvas && e.target !== canvas) {
         canvas.dispatchEvent(
@@ -397,14 +410,16 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
         globeContainer.removeEventListener("wheel", handleWheel);
       }
     };
-  }, [formatDate, handleClusterClick, handlePinClick, pins]);
+  }, [formatDate, handleClusterClick, handlePinClick, overlayOpen, pins]);
 
-  // Deshabilitar controles del globo cuando el popup de cluster está abierto
+  // Congelar el globo mientras haya un overlay abierto: OrbitControls
+  // gobierna arrastre, rueda y pellizco, así que con enabled=false no
+  // queda ningún gesto capaz de mover ni acercar el mapa.
   useEffect(() => {
     const controls = globeEl.current?.controls?.();
     if (!controls) return;
-    controls.enabled = clusterPopupPins === null;
-  }, [clusterPopupPins]);
+    controls.enabled = !overlayOpen;
+  }, [overlayOpen]);
 
   // Calcular tamaño del contenedor
   useEffect(() => {
@@ -460,73 +475,84 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
       className="relative w-full h-full"
       style={{ pointerEvents: "auto" }}
     >
-      <Globe
-        ref={globeEl}
-        width={containerSize.width || (typeof window !== "undefined" ? window.innerWidth : 800)}
-        height={
-          containerSize.height || (typeof window !== "undefined" ? window.innerHeight : 600)
-        }
-        globeImageUrl={GLOBE_IMAGE_URL}
-        bumpImageUrl="https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png"
-        showAtmosphere
-        enablePointerInteraction
-        globeTileEngineUrl={TILES_URL}
-        htmlElementsData={htmlElements}
-        htmlLat={(d) => (d as PinData).lat}
-        htmlLng={(d) => (d as PinData).lng}
-        htmlElement={renderPinWithTransition}
-        onGlobeReady={() => {
-          const globe = globeEl.current;
-          if (!globe) return;
-          const r = globe.getGlobeRadius();
-          const controls = globe.controls();
-          // Límite zoom out: el globo ocupa al menos ~1/3 de la pantalla
-          controls.maxDistance = r * 4.5;
-          // Límite zoom in: un poco más de acercamiento que el defecto (~r*1.01)
-          controls.minDistance = r * 1.00055;
-          // Inicializar altitud
-          const pov = globe.pointOfView();
-          setAltitude(pov.altitude);
-        }}
-        onZoom={(pov) => {
-          // Throttle: solo actualizar si la altitud cambió significativamente
-          setAltitude((prev) => {
-            if (Math.abs(prev - pov.altitude) < 0.03) return prev;
-            return pov.altitude;
-          });
-        }}
-      />
-
-      {/* Tooltip */}
-      {tooltip.visible && (
-        <div
-          className="fixed pointer-events-none z-50 bg-slate-900/95 text-white text-xs px-2.5 py-1.5 rounded border border-white/20 whitespace-pre"
-          style={{
-            left: `${tooltip.x}px`,
-            top: `${tooltip.y}px`,
-            transform: "translate(-50%, -100%)",
-            backdropFilter: "blur(4px)",
+      {/* Todo el mapa (globo, tooltip, botón de alta y créditos) queda
+          `inert` mientras haya un overlay abierto: ningún elemento de
+          aquí dentro puede recibir foco, clic ni ser anunciado por un
+          lector de pantalla. `display: contents` hace que este div no
+          genere caja, así que los hijos absolutos siguen posicionándose
+          respecto al contenedor de arriba igual que antes. */}
+      <div className="contents" inert={overlayOpen || undefined}>
+        <Globe
+          ref={globeEl}
+          width={containerSize.width || (typeof window !== "undefined" ? window.innerWidth : 800)}
+          height={
+            containerSize.height || (typeof window !== "undefined" ? window.innerHeight : 600)
+          }
+          globeImageUrl={GLOBE_IMAGE_URL}
+          bumpImageUrl="https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png"
+          showAtmosphere
+          enablePointerInteraction
+          globeTileEngineUrl={TILES_URL}
+          htmlElementsData={htmlElements}
+          htmlLat={(d) => (d as PinData).lat}
+          htmlLng={(d) => (d as PinData).lng}
+          htmlElement={renderPinWithTransition}
+          onGlobeReady={() => {
+            const globe = globeEl.current;
+            if (!globe) return;
+            const r = globe.getGlobeRadius();
+            const controls = globe.controls();
+            // Límite zoom out: el globo ocupa al menos ~1/3 de la pantalla
+            controls.maxDistance = r * 4.5;
+            // Límite zoom in: un poco más de acercamiento que el defecto (~r*1.01)
+            controls.minDistance = r * 1.00055;
+            // Inicializar altitud
+            const pov = globe.pointOfView();
+            setAltitude(pov.altitude);
           }}
+          onZoom={(pov) => {
+            // Throttle: solo actualizar si la altitud cambió significativamente
+            setAltitude((prev) => {
+              if (Math.abs(prev - pov.altitude) < 0.03) return prev;
+              return pov.altitude;
+            });
+          }}
+        />
+
+        {/* Tooltip: se oculta también con un overlay abierto. No basta
+            con el mouseleave del pin — al montarse el modal encima, el
+            pin deja de recibir eventos y ese mouseleave nunca llega, así
+            que el tooltip se quedaba flotando sobre el telón. */}
+        {tooltip.visible && !overlayOpen && (
+          <div
+            className="fixed pointer-events-none z-50 bg-slate-900/95 text-white text-xs px-2.5 py-1.5 rounded border border-white/20 whitespace-pre"
+            style={{
+              left: `${tooltip.x}px`,
+              top: `${tooltip.y}px`,
+              transform: "translate(-50%, -100%)",
+              backdropFilter: "blur(4px)",
+            }}
+          >
+            {tooltip.content}
+          </div>
+        )}
+
+        {/* Añadir Pegatina button */}
+        <button
+          type="button"
+          onClick={() => router.push("/mapa/nueva")}
+          aria-label="Añadir Pegatina"
+          title="Añadir Pegatina"
+          className="absolute z-20 top-7 left-4 nav:top-28 nav:left-4 flex items-center justify-center gap-2 w-10 h-10 nav:w-auto nav:h-12 nav:px-4 rounded-full bg-white/10 hover:bg-white/20 border border-white/30 text-white hover:text-amber-300 transition-all duration-0 shadow-lg backdrop-blur-sm cursor-pointer"
         >
-          {tooltip.content}
+          <Plus size={20} strokeWidth={2.5} />
+          <span className="hidden nav:inline text-sm font-semibold">Añadir Pegatina</span>
+        </button>
+
+        {/* Attribution footer */}
+        <div className="absolute bottom-4 right-4 text-xs text-white/50 select-none pointer-events-none">
+          Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community
         </div>
-      )}
-
-      {/* Añadir Pegatina button */}
-      <button
-        type="button"
-        onClick={() => router.push("/mapa/nueva")}
-        aria-label="Añadir Pegatina"
-        title="Añadir Pegatina"
-        className="absolute z-20 top-7 left-4 nav:top-28 nav:left-4 flex items-center justify-center gap-2 w-10 h-10 nav:w-auto nav:h-12 nav:px-4 rounded-full bg-white/10 hover:bg-white/20 border border-white/30 text-white hover:text-amber-300 transition-all duration-0 shadow-lg backdrop-blur-sm cursor-pointer"
-      >
-        <Plus size={20} strokeWidth={2.5} />
-        <span className="hidden nav:inline text-sm font-semibold">Añadir Pegatina</span>
-      </button>
-
-      {/* Attribution footer */}
-      <div className="absolute bottom-4 right-4 text-xs text-white/50 select-none pointer-events-none">
-        Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community
       </div>
 
       {/* Modal de detalle del pin */}

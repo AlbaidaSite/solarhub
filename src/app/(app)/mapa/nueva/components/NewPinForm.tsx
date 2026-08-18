@@ -8,7 +8,7 @@ import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
 import { parseCoordinates } from "@/lib/parseCoordinates";
 import { supabase } from "@/lib/supabase/client";
-import { addMapMediaAction, createPinAction } from "../../actions";
+import { addMapMediaAction, createPinAction, deletePinAction } from "../../actions";
 import type { MediaItemToInsert } from "../../actions";
 import MediaSection from "./MediaSection";
 import type { MediaEntry } from "./MediaSection";
@@ -102,6 +102,7 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
   const [uploadStatuses, setUploadStatuses] = useState<Record<string, EntryUploadStatus>>({});
   const [uploadFailures, setUploadFailures] = useState<UploadFailure[]>([]);
   const [createdPinId, setCreatedPinId] = useState<number | null>(null);
+  const [isDiscarding, setIsDiscarding] = useState(false);
 
   const countryWrapperRef = useRef<HTMLDivElement>(null);
 
@@ -253,6 +254,12 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
     if (!dateValue) { setSubmitError("La fecha es obligatoria"); return; }
     if (hasProcessing) { setSubmitError("Espera a que terminen de procesarse los archivos"); return; }
     if (hasMediaErrors) { setSubmitError("Elimina los archivos con error antes de guardar"); return; }
+    // El multimedia es obligatorio: una pegatina sin foto ni vídeo no
+    // aporta nada al mapa y no hay forma de verificarla.
+    if (readyEntries.length === 0) {
+      setSubmitError("Añade al menos una foto o un vídeo");
+      return;
+    }
 
     setSubmitPhase("uploading");
 
@@ -277,12 +284,7 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
     const pinId = pinResult.pinId;
     setCreatedPinId(pinId);
 
-    // 2. Upload media (if any)
-    if (readyEntries.length === 0) {
-      router.push("/mapa");
-      return;
-    }
-
+    // 2. Upload media — siempre hay al menos uno (validado arriba)
     const failures = await runUploadRound(pinId, readyEntries);
 
     if (failures.length === 0) {
@@ -317,8 +319,28 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
   };
 
   // ---------------------------------------------------------------------------
+  // Descartar el pin recién creado
+  // ---------------------------------------------------------------------------
+
+  // Si ninguna subida cuajó, el pin quedaría publicado sin multimedia,
+  // que es justo lo que la regla prohíbe. La única salida sin reintentar
+  // es deshacer el alta.
+  const handleDiscard = async () => {
+    if (!createdPinId) return;
+    setIsDiscarding(true);
+    await deletePinAction(createdPinId);
+    router.push("/mapa");
+  };
+
+  // ---------------------------------------------------------------------------
   // Upload progress / error view
   // ---------------------------------------------------------------------------
+
+  // Archivos que SÍ llegaron a adjuntarse al pin. Con cero, el pin
+  // incumple la regla de multimedia obligatorio y no se puede "continuar".
+  const attachedCount = Object.values(uploadStatuses).filter(
+    (st) => st.kind === "ok",
+  ).length;
 
   if (submitPhase === "uploading" || submitPhase === "partial_error") {
     return (
@@ -335,7 +357,9 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
           )}
           {submitPhase === "partial_error" && (
             <p className="text-chip text-amber-300 text-sm">
-              El pin se guardó correctamente pero algunos archivos no se pudieron subir.
+              {attachedCount > 0
+                ? "El pin se guardó correctamente pero algunos archivos no se pudieron subir."
+                : "El pin se guardó pero no se pudo subir ningún archivo. Una pegatina no puede quedarse sin multimedia: reintenta la subida o descarta el pin."}
             </p>
           )}
 
@@ -373,13 +397,24 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
               <CornerButton type="button" onClick={handleRetry} className="self-start">
                 Reintentar archivos fallidos
               </CornerButton>
-              <button
-                type="button"
-                onClick={() => { router.push("/mapa"); }}
-                className="text-sm text-white/50 hover:text-white transition-colors self-start cursor-pointer"
-              >
-                Continuar sin esos archivos
-              </button>
+              {attachedCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => { router.push("/mapa"); }}
+                  className="text-sm text-white/50 hover:text-white transition-colors self-start cursor-pointer"
+                >
+                  Continuar sin esos archivos
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleDiscard}
+                  disabled={isDiscarding}
+                  className="text-sm text-white/50 hover:text-red-400 transition-colors self-start cursor-pointer disabled:opacity-50"
+                >
+                  {isDiscarding ? "Descartando…" : "Descartar la pegatina"}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -555,6 +590,7 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
           onAdd={handleAddMedia}
           onRemove={handleRemoveMedia}
           onUpdate={handleUpdateMedia}
+          required
         />
 
         {/* Submit error */}

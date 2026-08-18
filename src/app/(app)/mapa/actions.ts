@@ -315,6 +315,25 @@ export async function deleteMapMediaAction(
 
   if (!media) return { ok: false, error: "Media no encontrada." };
 
+  // Un pin no puede quedarse sin multimedia (RN: el alta y la edición lo
+  // exigen, ver NewPinForm.tsx/EditPinForm.tsx). El formulario ya desactiva
+  // el botón cuando queda un solo archivo, pero la regla se sostiene aquí:
+  // es el único punto por el que pasan tanto el dueño como el staff. Para
+  // sustituir el último archivo hay que subir el nuevo y guardar primero.
+  const { data: siblings } = await supabase
+    .from("map_media")
+    .select("id")
+    .eq("pin_id", pinId)
+    .returns<Array<{ id: number }>>();
+
+  if ((siblings ?? []).length <= 1) {
+    return {
+      ok: false,
+      error:
+        "La pegatina debe conservar al menos un archivo multimedia. Sube otro antes de borrar este.",
+    };
+  }
+
   await supabase.storage.from(STORAGE_BUCKET).remove([media.path]);
 
   const { error } = await supabase.from("map_media").delete().eq("id", mediaId);

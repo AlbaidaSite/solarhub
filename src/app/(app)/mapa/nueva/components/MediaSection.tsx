@@ -238,6 +238,14 @@ interface MediaSectionProps {
   maxFiles?: number;
   /** Restringe a solo fotos (sin vídeo) — usado por el alta de eventos. */
   photosOnly?: boolean;
+  /**
+   * Marca la sección como obligatoria (asterisco rojo en vez de
+   * "(opcional)"). Solo cambia el rótulo: quien valida de verdad es
+   * el formulario que la usa, porque el mínimo exigible depende de si
+   * ya hay archivos guardados (ver EditPinForm.tsx). Los eventos la
+   * dejan a false: ahí la foto sigue siendo opcional.
+   */
+  required?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +260,7 @@ export default function MediaSection({
   disabled = false,
   maxFiles = MAX_FILES,
   photosOnly = false,
+  required = false,
 }: MediaSectionProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const remaining = maxFiles - entries.length;
@@ -320,7 +329,11 @@ export default function MediaSection({
     <fieldset>
       <legend className="text-sm font-medium text-zinc-400 mb-3">
         {photosOnly ? "Foto" : "Multimedia"}{" "}
-        <span className="text-zinc-500 font-normal">(opcional)</span>
+        {required ? (
+          <span className="text-red-400">*</span>
+        ) : (
+          <span className="text-zinc-500 font-normal">(opcional)</span>
+        )}
       </legend>
 
       {/* Drop zone */}

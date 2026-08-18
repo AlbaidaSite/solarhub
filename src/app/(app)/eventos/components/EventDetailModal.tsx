@@ -427,7 +427,7 @@ export default function EventDetailModal({
             </div>
           )}
 
-          <h1 id="event-detail-title" {...titleProps} className="text-4xl font-bold text-white">
+          <h1 {...titleProps} id="event-detail-title" className="text-4xl font-bold text-white">
             {occurrence.title}
           </h1>
 

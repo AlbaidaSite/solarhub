@@ -135,6 +135,15 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
   const hasMediaErrors = mediaEntries.some((e) => e.status === "error");
   const readyEntries = mediaEntries.filter((e) => e.status === "ready");
 
+  // Multimedia con la que se quedaría el pin al guardar. El borrado de
+  // los archivos ya guardados es inmediato (no se difiere al submit), así
+  // que `existingMedia` ya refleja lo que hay en BD en este momento.
+  const totalMediaAfterSave = existingMedia.length + readyEntries.length;
+  // Quitar el último archivo dejaría el pin sin multimedia, y el servidor
+  // lo rechaza (ver deleteMapMediaAction). Para sustituirlo hay que subir
+  // el nuevo y guardar primero.
+  const canDeleteExistingMedia = existingMedia.length > 1;
+
   // ---------------------------------------------------------------------------
   // Country dropdown: close on outside click
   // ---------------------------------------------------------------------------
@@ -264,6 +273,12 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
     if (!dateValue) { setSubmitError("La fecha es obligatoria"); return; }
     if (hasProcessing) { setSubmitError("Espera a que terminen de procesarse los archivos"); return; }
     if (hasMediaErrors) { setSubmitError("Elimina los archivos con error antes de guardar"); return; }
+    // Multimedia obligatorio, igual que en el alta. Solo puede saltar en
+    // pines antiguos, creados cuando el campo aún era opcional.
+    if (totalMediaAfterSave === 0) {
+      setSubmitError("La pegatina necesita al menos una foto o un vídeo");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -329,6 +344,12 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
   // Upload progress / error view
   // ---------------------------------------------------------------------------
 
+  // Archivos que SÍ llegaron a adjuntarse en esta ronda. Junto con los ya
+  // guardados dicen si el pin cumple o no el mínimo de multimedia.
+  const attachedCount = Object.values(uploadStatuses).filter(
+    (st) => st.kind === "ok",
+  ).length;
+
   if (submitPhase === "uploading" || submitPhase === "partial_error") {
     return (
       <div className="w-full flex flex-col items-center pb-12">
@@ -341,7 +362,9 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
           )}
           {submitPhase === "partial_error" && (
             <p className="text-chip text-amber-300 text-sm">
-              El pin se actualizó correctamente pero algunos archivos no se pudieron subir.
+              {existingMedia.length + attachedCount > 0
+                ? "El pin se actualizó correctamente pero algunos archivos no se pudieron subir."
+                : "El pin se actualizó pero no se pudo subir ningún archivo, así que sigue sin multimedia. Reinténtalo para completarlo."}
             </p>
           )}
           <div className="flex flex-col gap-3">
@@ -598,8 +621,15 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
                     <button
                       type="button"
                       onClick={() => handleDeleteExistingMedia(m.id)}
-                      disabled={isDeleting || deletingMediaId !== null}
+                      disabled={
+                        isDeleting || deletingMediaId !== null || !canDeleteExistingMedia
+                      }
                       aria-label="Eliminar archivo"
+                      title={
+                        canDeleteExistingMedia
+                          ? "Eliminar archivo"
+                          : "Es el único archivo de la pegatina: sube otro y guarda antes de poder borrarlo"
+                      }
                       className="absolute top-1 left-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white/60 hover:text-red-400 hover:bg-black/80 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Trash2 size={11} />
@@ -608,6 +638,13 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
                 );
               })}
             </div>
+            {!canDeleteExistingMedia && (
+              <p className="mt-3 text-xs text-white/40">
+                Una pegatina no puede quedarse sin multimedia. Para sustituir
+                este archivo, sube el nuevo y guarda; después ya podrás
+                borrar el antiguo.
+              </p>
+            )}
           </fieldset>
         )}
 
@@ -618,6 +655,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
           onRemove={handleRemoveMedia}
           onUpdate={handleUpdateMedia}
           maxFiles={Math.max(0, 5 - existingMedia.length)}
+          required={existingMedia.length === 0}
         />
 
         {/* Submit error */}
