@@ -7,8 +7,6 @@ import { isBirthday, type EventOccurrence } from "@/types/events";
 import { formatEventTime, todayInMadrid } from "../lib/formatting";
 import { isPastOccurrence } from "../lib/eventOccurrences";
 
-const WEEKDAY_TZ = "UTC";
-
 // Fila de evento compartida entre EventListModal.tsx (listado del día,
 // móvil) y UpcomingEventsList.tsx (perfil, "Eventos pendientes") — mismo
 // tratamiento visual en los dos sitios, así que vive en un único
@@ -20,26 +18,26 @@ interface EventListRowProps {
   onSelect?: (eventId: number) => void;
   onToggleInterest: (occurrence: EventOccurrence) => void;
   isInterestPending: boolean;
-  // Solo en el listado de "Eventos pendientes" del perfil: la fecha no es
-  // implícita ahí (a diferencia del modal de lista, que ya tiene la fecha
-  // en su cabecera).
-  showDateBadge?: boolean;
-  // Idem: solo el listado del perfil pide un contorno algo más claro (en
-  // reposo y en hover) que el del modal de lista del día.
-  lighterBorder?: boolean;
+  // "boxed" (por defecto, modal de lista del día): la fila es su propio
+  // recuadro. "grouped" (perfil): la fila va dentro de un DayGroupBox que
+  // ya pone el borde y la fecha, así que aquí solo queda el relleno y el
+  // fondo de hover.
+  variant?: "boxed" | "grouped";
 }
 
 // Clases completas y literales (no interpolación tipo `hover:${x}`): el
 // escáner de Tailwind necesita ver la cadena entera en el código fuente,
 // si no la purga en build.
-const BORDER_CLASSES = {
-  default: {
-    interactive: "border-white/10 hover:border-white/30 cursor-pointer",
-    static: "border-white/10 cursor-default",
+const ROW_CLASSES = {
+  boxed: {
+    base: "gap-3 rounded-xl border border-white/10 p-2",
+    interactive: "hover:border-white/30 cursor-pointer",
+    static: "cursor-default",
   },
-  light: {
-    interactive: "border-white/20 hover:border-white/40 cursor-pointer",
-    static: "border-white/20 cursor-default",
+  grouped: {
+    base: "gap-3 rounded-lg p-1",
+    interactive: "hover:bg-white/5 cursor-pointer",
+    static: "cursor-default",
   },
 };
 
@@ -48,14 +46,12 @@ export default function EventListRow({
   onSelect,
   onToggleInterest,
   isInterestPending,
-  showDateBadge,
-  lighterBorder,
+  variant = "boxed",
 }: EventListRowProps) {
   const birthday = isBirthday(occurrence);
   const classes = eventTypeClasses(occurrence.eventType.color);
   const timeLabel = formatEventTime(occurrence.eventDate, occurrence.startTimeIncluded);
-  const borderVariant = BORDER_CLASSES[lighterBorder ? "light" : "default"];
-  const borderClasses = birthday ? borderVariant.static : borderVariant.interactive;
+  const rowVariant = ROW_CLASSES[variant];
 
   return (
     <div
@@ -72,10 +68,10 @@ export default function EventListRow({
               }
             }
       }
-      className={`flex items-center gap-3 rounded-xl border p-2 transition-colors ${borderClasses}`}
+      className={`flex items-center transition-colors ${rowVariant.base} ${
+        birthday ? rowVariant.static : rowVariant.interactive
+      }`}
     >
-      {showDateBadge && <DateBadge occurrenceDate={occurrence.occurrenceDate} />}
-
       <div className={`relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border-2 ${classes.badgeBorder}`}>
         {birthday ? (
           <div className={`flex h-full w-full items-center justify-center ${classes.dot}`}>
@@ -127,29 +123,6 @@ export default function EventListRow({
           {occurrence.liked ? <BellRing size={16} /> : <BellOff size={16} />}
         </button>
       )}
-    </div>
-  );
-}
-
-// Insignia de fecha: prácticamente cuadrada, dos filas — arriba (más baja)
-// las tres primeras letras del día de la semana, abajo (más alta) el
-// número de día. Se calcula sobre las partes Y-M-D de occurrenceDate
-// directamente (no sobre eventDate/un instante): occurrenceDate ya viene
-// proyectada a su día real en Europe/Madrid para eventos anuales, así que
-// construir la fecha en UTC a partir de esas mismas partes (en vez de
-// volver a aplicar una zona horaria) evita cualquier desfase de día.
-function DateBadge({ occurrenceDate }: { occurrenceDate: string }) {
-  const [year, month, day] = occurrenceDate.split("-").map(Number);
-  const weekdayAbbr = new Intl.DateTimeFormat("es-ES", { weekday: "short", timeZone: WEEKDAY_TZ })
-    .format(new Date(Date.UTC(year, month - 1, day)))
-    .replace(".", "");
-
-  return (
-    <div className="flex h-12 w-12 shrink-0 flex-col overflow-hidden rounded-lg border border-white/15 text-white">
-      <div className="flex h-4 items-center justify-center bg-white/15 text-[10px] font-semibold uppercase tracking-wide">
-        {weekdayAbbr}
-      </div>
-      <div className="flex flex-1 items-center justify-center text-lg font-bold">{day}</div>
     </div>
   );
 }

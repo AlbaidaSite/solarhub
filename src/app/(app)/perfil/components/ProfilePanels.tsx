@@ -2,15 +2,18 @@
 
 import { useState } from "react";
 import type { EventOccurrence } from "@/types/events";
+import type { HistoryEntry } from "../actions";
 import UpcomingEventsList from "./UpcomingEventsList";
+import HistoryList from "./HistoryList";
 
 type Panel = "eventos" | "historial";
 
 interface ProfilePanelsProps {
   upcomingEvents: EventOccurrence[];
+  history: HistoryEntry[];
 }
 
-export default function ProfilePanels({ upcomingEvents }: ProfilePanelsProps) {
+export default function ProfilePanels({ upcomingEvents, history }: ProfilePanelsProps) {
   const [panel, setPanel] = useState<Panel>("eventos");
 
   return (
@@ -41,7 +44,7 @@ export default function ProfilePanels({ upcomingEvents }: ProfilePanelsProps) {
         <h2 className="hidden md:block text-2xl font-bold text-white text-center mb-4">
           Historial
         </h2>
-        {/* Contenido pendiente */}
+        <HistoryList entries={history} />
       </PanelSection>
     </div>
   );
