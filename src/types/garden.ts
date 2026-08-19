@@ -45,3 +45,30 @@ export interface PlantBed {
 }
 
 export type GardenMode = "actual" | "planificada";
+
+// Nivel de riego de un bancal. Espejo del enum irrigation_level de la
+// base de datos (ver 20260819120000_garden_bed_irrigation.sql), en
+// mayúsculas como el resto de enums del esquema.
+export type IrrigationLevel = "ABIERTO" | "BAJO" | "CERRADO";
+
+// Fila de la tabla irrigation. Es 1:1 con garden_bed y la clave primaria
+// ES garden_bed_id: toda fila de garden_bed tiene la suya (backfill +
+// trigger), así que la app solo actualiza, nunca inserta.
+export interface Irrigation {
+  garden_bed_id: number;
+  irrigation_level: IrrigationLevel;
+}
+
+// Qué se está mirando en el lienzo del huerto. Los cultivos se ven en uno
+// de los dos modos (Actual / Planificar) y el riego no es ninguno de los
+// dos: es otra lectura de los mismos bancales.
+//
+// Unión discriminada y no un tercer valor de GardenMode a propósito.
+// GardenMode significa "qué conjunto de filas de plant_bed", y se traduce
+// directamente a is_future (ver bedsForDistribution). Un "riego" metido
+// ahí dentro se leería como is_future=false, o sea, se haría pasar por
+// Actual ante BedModal y addPlantBedAction. Así el modo solo existe donde
+// significa algo.
+export type GardenBoard =
+  | { kind: "crops"; mode: GardenMode }
+  | { kind: "irrigation" };

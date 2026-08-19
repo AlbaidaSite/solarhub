@@ -3,23 +3,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import ModeToggle from "./ModeToggle";
+import BoardToggle from "./BoardToggle";
 import GardenCanvas, { type CanvasPreview } from "./GardenCanvas";
 import CropPanel from "./CropPanel";
 import BedModal from "./BedModal";
 import PlantModal from "./PlantModal";
+import IrrigationModal from "./IrrigationModal";
 import HuertoTabs, { HUERTO_TAB_IDS, type HuertoTab } from "./HuertoTabs";
 import { bedsForDistribution } from "../lib/bedsForDistribution";
 import { canAddCrop } from "../lib/subcells";
 import { bedAtPoint, insertionIndexFor } from "../lib/dropTarget";
 import { clientToCanvasPoint } from "../lib/canvasPoint";
 import { addPlantBedAction, getGardenPermissionAction } from "../actions";
-import type { GardenBed, GardenMode, Plant, PlantBed } from "@/types/garden";
+import type {
+  GardenBed,
+  GardenBoard,
+  Irrigation,
+  IrrigationLevel,
+  Plant,
+  PlantBed,
+} from "@/types/garden";
 
 interface HuertoViewProps {
   plants: Plant[];
   beds: GardenBed[];
   plantBeds: PlantBed[];
+  irrigation: Irrigation[];
   initialMonth: number;
 }
 
@@ -45,9 +54,12 @@ export default function HuertoView({
   plants: initialPlants,
   beds,
   plantBeds: initialPlantBeds,
+  irrigation: initialIrrigation,
   initialMonth,
 }: HuertoViewProps) {
-  const [mode, setMode] = useState<GardenMode>("actual");
+  // Lectura del lienzo. Arranca en los cultivos actuales, que es lo que
+  // se viene a ver; el riego es una consulta puntual.
+  const [board, setBoard] = useState<GardenBoard>({ kind: "crops", mode: "actual" });
   const [month, setMonth] = useState(initialMonth);
   const [tab, setTab] = useState<HuertoTab>("bancal");
   // Las plantas viven en estado (y no solo en las props) porque la ficha de
@@ -55,6 +67,7 @@ export default function HuertoView({
   // sustituye la planta aquí y el panel y el lienzo se enteran solos.
   const [plants, setPlants] = useState(initialPlants);
   const [plantBeds, setPlantBeds] = useState(initialPlantBeds);
+  const [irrigation, setIrrigation] = useState(initialIrrigation);
   const [canManage, setCanManage] = useState(false);
   const [selectedBedId, setSelectedBedId] = useState<number | null>(null);
   const [selectedPlantId, setSelectedPlantId] = useState<number | null>(null);
@@ -88,13 +101,34 @@ export default function HuertoView({
   }, []);
 
   const isDesktop = !useIsMobile(DESKTOP_MIN_WIDTH - 1);
-  const isFuture = mode === "planificada";
+
+  // Modo de cultivos, o null si lo que se está mirando es el riego. Todo
+  // lo que solo tiene sentido sobre cultivos (plantar, el modal de bancal,
+  // is_future) cuelga de que esto NO sea null, en vez de asumir un modo por
+  // defecto: un riego que se hiciera pasar por "actual" plantaría de verdad.
+  const cropsMode = board.kind === "crops" ? board.mode : null;
+  const isIrrigationBoard = board.kind === "irrigation";
 
   const plantsById = useMemo(() => new Map(plants.map((p) => [p.id, p])), [plants]);
-  const distribution = useMemo(() => bedsForDistribution(plantBeds, mode), [plantBeds, mode]);
+  const distribution = useMemo(
+    () => (cropsMode ? bedsForDistribution(plantBeds, cropsMode) : new Map<number, PlantBed[]>()),
+    [plantBeds, cropsMode],
+  );
+
+  const irrigationByBed = useMemo(
+    () => new Map(irrigation.map((row) => [row.garden_bed_id, row.irrigation_level])),
+    [irrigation],
+  );
 
   // Plantar tocando existe solo donde no existe el arrastre, y con el mismo
   // permiso: garden manager o staff. Las dos vias nunca estan activas a la vez.
+  //
+  // No depende de que se este mirando una lectura de cultivos, a diferencia
+  // del arrastre de escritorio: la pulsacion larga se hace sobre el panel de
+  // cultivos, que en movil es OTRA pestaña, asi que quien la hace no tiene
+  // por que saber que el lienzo se quedo en riego. Empezar el gesto es lo
+  // que devuelve el lienzo a Actual (ver startTapPlanting), en vez de no
+  // hacer nada y dejar al usuario preguntandose por que.
   const canTapPlant = canManage && !isDesktop;
   const plantingPlant = plantingPlantId != null ? plantsById.get(plantingPlantId) : undefined;
 
@@ -144,6 +178,10 @@ export default function HuertoView({
     plantingPendingRef.current = false;
     setPlantingPlantId(plantId);
     setTab("bancal");
+    // En riego no hay donde plantar, asi que hay que volver a los cultivos.
+    // Solo desde riego: si ya se estaba en Planificar, forzar "actual" aqui
+    // plantaria en el modo equivocado a quien estuviera planificando.
+    setBoard((prev) => (prev.kind === "crops" ? prev : { kind: "crops", mode: "actual" }));
   }, []);
 
   const cancelTapPlanting = useCallback(() => {
@@ -162,6 +200,16 @@ export default function HuertoView({
     setTab(next);
   }, []);
 
+  // Cambiar de lectura cancela lo que estuviera a medias y cierra el modal
+  // del bancal abierto: el de cultivos y el de riego no son el mismo, y
+  // dejar uno abierto al cambiar mostraria datos de la lectura anterior.
+  const handleBoardChange = useCallback((next: GardenBoard) => {
+    setPlantingPlantId(null);
+    setDropError(null);
+    setSelectedBedId(null);
+    setBoard(next);
+  }, []);
+
   // ─── Arrastrar un cultivo del panel hasta un bancal ────────────────────
 
   const handlePlantDragStart = (plant: Plant, event: React.PointerEvent) => {
@@ -177,7 +225,8 @@ export default function HuertoView({
   };
 
   useEffect(() => {
-    if (!isDragging) return;
+    if (!isDragging || cropsMode == null) return;
+    const isFuture = cropsMode === "planificada";
 
     const finish = () => {
       dragRef.current = null;
@@ -267,17 +316,21 @@ export default function HuertoView({
       window.removeEventListener("pointerup", handleUp);
       window.removeEventListener("pointercancel", handleCancel);
     };
-  }, [isDragging, beds, distribution, isFuture, handlePlantSelect, replaceBedRows, updatePreview]);
+  }, [isDragging, beds, distribution, cropsMode, handlePlantSelect, replaceBedRows, updatePreview]);
 
   // Tocar un bancal significa una cosa u otra segun haya un cultivo a la
   // espera: plantarlo ahi, o abrir el bancal para consultarlo.
   const handleBedSelect = useCallback(
     (bedId: number, clientX?: number, clientY?: number) => {
+      // Sin cultivo a la espera, tocar es abrir: el modal de cultivos o el
+      // de riego, segun lo que se este mirando. Quien monta cada uno decide
+      // con que permiso (ver el render).
       if (plantingPlantId == null) {
         setSelectedBedId(bedId);
         return;
       }
-      if (plantingPendingRef.current) return;
+      if (plantingPendingRef.current || cropsMode == null) return;
+      const isFuture = cropsMode === "planificada";
 
       const bed = beds.find((b) => b.id === bedId);
       if (!bed) return;
@@ -315,14 +368,25 @@ export default function HuertoView({
         }
       });
     },
-    [plantingPlantId, beds, distribution, isFuture, replaceBedRows],
+    [plantingPlantId, beds, distribution, cropsMode, replaceBedRows],
   );
 
-  // ─── Modal de bancal ───────────────────────────────────────────────────
+  // ─── Modales de bancal ─────────────────────────────────────────────────
 
   const selectedBed = selectedBedId != null ? beds.find((b) => b.id === selectedBedId) : undefined;
   const selectedRows = selectedBedId != null ? distribution.get(selectedBedId) ?? [] : [];
   const selectedPlant = selectedPlantId != null ? plantsById.get(selectedPlantId) : undefined;
+
+  // Un nivel de riego guardado sustituye a su fila en el estado. La fila
+  // existe siempre (la tabla se llena por backfill y trigger), asi que no
+  // hay que contemplar el alta.
+  const handleIrrigationChange = useCallback((bedId: number, level: IrrigationLevel) => {
+    setIrrigation((prev) =>
+      prev.map((row) =>
+        row.garden_bed_id === bedId ? { ...row, irrigation_level: level } : row,
+      ),
+    );
+  }, []);
 
   // La ficha de cultivo puede estar ABIERTA ENCIMA del modal de bancal
   // (se abre desde su listado). Mientras lo esté, el bancal ignora su
@@ -373,7 +437,7 @@ export default function HuertoView({
           aria-labelledby={HUERTO_TAB_IDS.bancalTab}
           className={`${tab === "bancal" ? "flex" : "hidden"} md:flex flex-col gap-4 h-full min-h-0`}
         >
-          <ModeToggle mode={mode} onChange={setMode} />
+          <BoardToggle board={board} onChange={handleBoardChange} />
           {plantingPlant && (
             <div
               role="status"
@@ -416,14 +480,19 @@ export default function HuertoView({
               beds={beds}
               distribution={distribution}
               plantsById={plantsById}
-              mode={mode}
+              board={board}
+              irrigationByBed={irrigationByBed}
               svgRef={svgRef}
               preview={preview}
-              // Abrir un bancal es consultar lo que tiene plantado, así que
-              // no depende del permiso: lo que decide canManage es qué
-              // botones enseña el modal una vez abierto. Con un cultivo a la
-              // espera el mismo toque planta en vez de abrir.
-              onBedSelect={handleBedSelect}
+              // En cultivos, abrir un bancal es consultar lo que tiene
+              // plantado: no depende del permiso, y lo que decide canManage
+              // es que botones enseña el modal una vez abierto. Con un
+              // cultivo a la espera el mismo toque planta en vez de abrir.
+              //
+              // En riego es al reves: lo unico que se puede hacer con un
+              // bancal ahi es cambiarle el nivel, asi que sin permiso no hay
+              // nada que abrir y el bancal deja de ser clicable.
+              onBedSelect={isIrrigationBoard && !canManage ? undefined : handleBedSelect}
             />
           </div>
         </section>
@@ -443,7 +512,12 @@ export default function HuertoView({
             month={month}
             onMonthChange={setMonth}
             onPlantSelect={handlePlantSelect}
-            onPlantDragStart={canManage && isDesktop ? handlePlantDragStart : undefined}
+            // En riego no se planta: sin este manejador, PlantRow ni siquiera
+            // se marca como arrastrable (ver `draggable` alli), asi que el
+            // cursor de agarre desaparece con el gesto.
+            onPlantDragStart={
+              canManage && isDesktop && cropsMode != null ? handlePlantDragStart : undefined
+            }
             onPlantLongPress={canTapPlant ? startTapPlanting : undefined}
           />
         </section>
@@ -466,19 +540,34 @@ export default function HuertoView({
         </div>
       )}
 
-      {selectedBed && (
+      {/* El modal de cultivos solo se monta con un modo de cultivos de
+          verdad: asi isFuture no puede salir de una lectura que no es
+          ninguno de los dos (ver cropsMode). */}
+      {selectedBed && cropsMode != null && (
         <BedModal
           bed={selectedBed}
           rows={selectedRows}
           plants={plants}
           plantsById={plantsById}
           month={month}
-          isFuture={isFuture}
+          isFuture={cropsMode === "planificada"}
           canManage={canManage}
           onClose={handleBedClose}
-          onRowsChange={(rows) => replaceBedRows(selectedBed.id, isFuture, rows)}
+          onRowsChange={(rows) => replaceBedRows(selectedBed.id, cropsMode === "planificada", rows)}
           onRowDeleted={removeRow}
           onPlantSelect={handlePlantSelect}
+        />
+      )}
+
+      {/* Y el de riego solo en la lectura de riego. Aqui no hace falta
+          comprobar el permiso: sin el, el bancal no es clicable y este
+          selectedBedId no llega a existir. */}
+      {selectedBed && isIrrigationBoard && (
+        <IrrigationModal
+          bed={selectedBed}
+          level={irrigationByBed.get(selectedBed.id)}
+          onClose={() => setSelectedBedId(null)}
+          onLevelChange={handleIrrigationChange}
         />
       )}
 

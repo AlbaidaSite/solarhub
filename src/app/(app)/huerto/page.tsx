@@ -6,7 +6,7 @@ import { getCurrentMonthInMadrid } from "./lib/madridMonth";
 export const metadata: Metadata = { title: "Huerto | SolarHub" };
 
 export default async function HuertoPage() {
-  const { plants, beds, plantBeds } = await getGardenDataAction();
+  const { plants, beds, plantBeds, irrigation } = await getGardenDataAction();
   const initialMonth = getCurrentMonthInMadrid();
 
   return (
@@ -14,6 +14,7 @@ export default async function HuertoPage() {
       plants={plants}
       beds={beds}
       plantBeds={plantBeds}
+      irrigation={irrigation}
       initialMonth={initialMonth}
     />
   );
