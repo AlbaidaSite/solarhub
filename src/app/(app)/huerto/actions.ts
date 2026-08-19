@@ -5,7 +5,14 @@ import { requireUserActionClient } from "@/lib/supabase/actionAuth";
 import { getStorageUrl } from "@/lib/supabase/storage";
 import { canAddCrop } from "./lib/subcells";
 import { MAX_SOW_YEAR, MIN_SOW_YEAR } from "./lib/diary";
-import type { CropDiaryEntry, GardenBed, Plant, PlantBed } from "@/types/garden";
+import type {
+  CropDiaryEntry,
+  GardenBed,
+  Irrigation,
+  IrrigationLevel,
+  Plant,
+  PlantBed,
+} from "@/types/garden";
 
 type ServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
@@ -13,6 +20,7 @@ const PLANT_COLUMNS =
   "id, name, icon_path, seed_info, harvest_info, months_of_growth, months_of_harvest, color";
 const PLANT_BED_COLUMNS = "id, plant_id, garden_bed_id, description, is_future, order_number";
 const CROP_DIARY_COLUMNS = "id, plant_id, sow_year, notes, updated_at";
+const IRRIGATION_COLUMNS = "garden_bed_id, irrigation_level";
 
 function normalizeMonths(months: number[] | null): number[] | null {
   if (months == null) return null;
@@ -40,6 +48,7 @@ export interface GardenData {
   plants: Plant[];
   beds: GardenBed[];
   plantBeds: PlantBed[];
+  irrigation: Irrigation[];
 }
 
 // Las tres tablas son diminutas (decenas de filas): se cargan enteras
@@ -49,7 +58,7 @@ export interface GardenData {
 export async function getGardenDataAction(): Promise<GardenData> {
   const supabase = await createSupabaseServerClient();
 
-  const [plantsRes, bedsRes, plantBedsRes] = await Promise.all([
+  const [plantsRes, bedsRes, plantBedsRes, irrigationRes] = await Promise.all([
     supabase
       .from("plant")
       .select(PLANT_COLUMNS)
@@ -65,6 +74,11 @@ export async function getGardenDataAction(): Promise<GardenData> {
       .select(PLANT_BED_COLUMNS)
       .order("id")
       .returns<PlantBed[]>(),
+    supabase
+      .from("irrigation")
+      .select(IRRIGATION_COLUMNS)
+      .order("garden_bed_id")
+      .returns<Irrigation[]>(),
   ]);
 
   // Next.js reenvía console.error de Server Components al navegador
@@ -84,6 +98,10 @@ export async function getGardenDataAction(): Promise<GardenData> {
     const e = plantBedsRes.error;
     console.error(`Error loading plant_bed: ${e.message} (code=${e.code}, details=${e.details}, hint=${e.hint})`);
   }
+  if (irrigationRes.error) {
+    const e = irrigationRes.error;
+    console.error(`Error loading irrigation: ${e.message} (code=${e.code}, details=${e.details}, hint=${e.hint})`);
+  }
 
   const plants = (plantsRes.data ?? []).map(toClientPlant);
 
@@ -91,6 +109,7 @@ export async function getGardenDataAction(): Promise<GardenData> {
     plants,
     beds: bedsRes.data ?? [],
     plantBeds: plantBedsRes.data ?? [],
+    irrigation: irrigationRes.data ?? [],
   };
 }
 
@@ -566,4 +585,56 @@ function validateDiaryEntry(sowYear: number, notes: string): string | null {
   }
   if (notes.trim() === "") return "Escribe algo en la entrada del diario.";
   return null;
+}
+
+// ─── Nivel de riego de un bancal ────────────────────────────────────────────
+// Solo UPDATE, nunca INSERT: la fila de riego de un bancal existe siempre
+// (backfill + trigger trg_garden_bed_irrigation, ver la migración
+// 20260819120000_garden_bed_irrigation.sql). La tabla no tiene siquiera
+// política de INSERT, así que un upsert fallaría en cuanto la fila no
+// estuviera, en vez de crearla por lo bajo.
+//
+// Quién puede cambiarlo lo decide la política irrigation_update_garden_manager
+// (garden manager o staff), no este código. La interfaz esconde el gesto a
+// quien no tiene permiso, pero el que manda es RLS.
+
+const IRRIGATION_LEVELS_SET = new Set<IrrigationLevel>(["ABIERTO", "BAJO", "CERRADO"]);
+
+export type IrrigationResult =
+  | { ok: true; row: Irrigation }
+  | { ok: false; error: string };
+
+export async function setIrrigationLevelAction(
+  gardenBedId: number,
+  level: IrrigationLevel,
+): Promise<IrrigationResult> {
+  if (!Number.isInteger(gardenBedId) || gardenBedId <= 0) {
+    return { ok: false, error: "Bancal inválido." };
+  }
+  if (!IRRIGATION_LEVELS_SET.has(level)) {
+    return { ok: false, error: "Nivel de riego inválido." };
+  }
+
+  const auth = await requireUserActionClient();
+  if (!auth.ok) return auth;
+  const { supabase } = auth;
+
+  // El .select() no es para leer el valor —ya lo conocemos— sino para
+  // distinguir "actualizado" de "no ha tocado ninguna fila". Sin permiso,
+  // RLS no devuelve error: filtra la fila y el UPDATE termina bien
+  // habiendo cambiado cero filas. Sin esta comprobación el modal diría
+  // que se ha guardado algo que no se ha guardado.
+  const { data, error } = await supabase
+    .from("irrigation")
+    .update({ irrigation_level: level })
+    .eq("garden_bed_id", gardenBedId)
+    .select(IRRIGATION_COLUMNS)
+    .maybeSingle<Irrigation>();
+
+  if (error) return { ok: false, error: error.message };
+  if (!data) {
+    return { ok: false, error: "No se ha podido cambiar el riego de este bancal." };
+  }
+
+  return { ok: true, row: data };
 }

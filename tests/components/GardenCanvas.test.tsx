@@ -5,11 +5,16 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, cleanup } from "@testing-library/react";
 import GardenCanvas from "@/app/(app)/huerto/components/GardenCanvas";
-import type { GardenBed, Plant, PlantBed } from "@/types/garden";
+import type { GardenBed, IrrigationLevel, Plant, PlantBed } from "@/types/garden";
 
 beforeEach(() => {
   cleanup();
 });
+
+// El lienzo pide siempre las dos lecturas; estos tests ejercitan la de
+// cultivos, asi que el riego va vacio (los bancales caerian a CERRADO).
+const CROPS_BOARD = { kind: "crops", mode: "actual" } as const;
+const NO_IRRIGATION = new Map<number, IrrigationLevel>();
 
 const beds: GardenBed[] = [
   { id: 1, name: "Vacío", width: 10, height: 10, pos_x: 0, pos_y: 0 },
@@ -31,7 +36,7 @@ describe("GardenCanvas", () => {
   it("dibuja un <rect> de contorno por bancal", () => {
     const distribution = new Map<number, PlantBed[]>();
     const { container } = render(
-      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} mode="actual" />,
+      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} board={CROPS_BOARD} irrigationByBed={NO_IRRIGATION} />,
     );
     // Marco del lienzo + un rect de contorno por bancal.
     expect(container.querySelectorAll("svg > rect, svg > g > rect")).toHaveLength(1 + beds.length);
@@ -42,7 +47,7 @@ describe("GardenCanvas", () => {
       [2, [pb({ id: 1, garden_bed_id: 2, plant_id: 1 }), pb({ id: 2, garden_bed_id: 2, plant_id: 2 })]],
     ]);
     const { container } = render(
-      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} mode="actual" />,
+      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} board={CROPS_BOARD} irrigationByBed={NO_IRRIGATION} />,
     );
     expect(container.querySelectorAll("image")).toHaveLength(2);
   });
@@ -50,7 +55,7 @@ describe("GardenCanvas", () => {
   it("un bancal vacío no renderiza ninguna <image>", () => {
     const distribution = new Map<number, PlantBed[]>();
     const { container } = render(
-      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} mode="actual" />,
+      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} board={CROPS_BOARD} irrigationByBed={NO_IRRIGATION} />,
     );
     expect(container.querySelectorAll("image")).toHaveLength(0);
   });
@@ -60,7 +65,7 @@ describe("GardenCanvas", () => {
       [2, [pb({ id: 1, garden_bed_id: 2, plant_id: 1 })]],
     ]);
     const { container } = render(
-      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} mode="actual" />,
+      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} board={CROPS_BOARD} irrigationByBed={NO_IRRIGATION} />,
     );
     expect(container.querySelector("svg img")).toBeNull();
   });
@@ -70,7 +75,7 @@ describe("GardenCanvas", () => {
       [2, [pb({ id: 1, garden_bed_id: 2, plant_id: 2 })]],
     ]);
     const { container } = render(
-      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} mode="actual" />,
+      <GardenCanvas beds={beds} distribution={distribution} plantsById={plantsById} board={CROPS_BOARD} irrigationByBed={NO_IRRIGATION} />,
     );
 
     const polygon = container.querySelector("polygon");
@@ -91,7 +96,8 @@ describe("GardenCanvas", () => {
         beds={beds}
         distribution={new Map()}
         plantsById={plantsById}
-        mode="actual"
+        board={CROPS_BOARD}
+        irrigationByBed={NO_IRRIGATION}
       />,
     );
     expect(container.querySelector("svg")).toHaveAttribute("role", "img");
@@ -105,7 +111,8 @@ describe("GardenCanvas", () => {
         beds={beds}
         distribution={new Map()}
         plantsById={plantsById}
-        mode="actual"
+        board={CROPS_BOARD}
+        irrigationByBed={NO_IRRIGATION}
         onBedSelect={(id) => selected.push(id)}
       />,
     );
@@ -126,7 +133,8 @@ describe("GardenCanvas", () => {
         beds={beds}
         distribution={distribution}
         plantsById={plantsById}
-        mode="actual"
+        board={CROPS_BOARD}
+        irrigationByBed={NO_IRRIGATION}
         preview={{ bedId: 2, plant: plants[1], index: 0 }}
       />,
     );

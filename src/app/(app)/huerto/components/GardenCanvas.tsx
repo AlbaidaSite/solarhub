@@ -2,10 +2,12 @@
 
 import { useCallback, useId, useState, type RefObject } from "react";
 import BedShape, { type BedPreview } from "./BedShape";
+import IrrigationBedShape from "./IrrigationBedShape";
 import { BED_STROKE_WIDTH, CANVAS_VIEWBOX, GARDEN_CANVAS } from "../lib/canvas";
 import { bedCropLines, bedSummary } from "../lib/bedCrops";
+import { irrigationInfo } from "../lib/irrigation";
 import { plantColorClasses } from "@/lib/plantColorClasses";
-import type { GardenBed, GardenMode, Plant, PlantBed } from "@/types/garden";
+import type { GardenBed, GardenBoard, IrrigationLevel, Plant, PlantBed } from "@/types/garden";
 
 // Separación entre el recuadro y el borde del bancal al que se ancla.
 const TOOLTIP_GAP = 10;
@@ -38,9 +40,16 @@ interface GardenCanvasProps {
   beds: GardenBed[];
   distribution: Map<number, PlantBed[]>;
   plantsById: Map<number, Plant>;
-  mode: GardenMode;
-  // Solo lo reciben quienes pueden editar el huerto (garden manager o
-  // staff). Su ausencia es lo que hace el lienzo puramente informativo.
+  // Qué lectura del huerto se pinta: los cultivos de un modo, o el riego.
+  board: GardenBoard;
+  // Nivel de riego por bancal. Solo se lee en la lectura de riego, pero
+  // llega siempre: es un Map diminuto y así el lienzo no tiene props que
+  // aparezcan y desaparezcan con el board.
+  irrigationByBed: Map<number, IrrigationLevel>;
+  // Solo lo reciben quienes pueden actuar sobre un bancal en la lectura que
+  // se esté mirando. Su ausencia es lo que hace el lienzo puramente
+  // informativo: en riego eso es todo el mundo salvo garden manager y staff;
+  // en cultivos, cualquiera puede abrir un bancal para consultarlo.
   onBedSelect?: (bedId: number, clientX?: number, clientY?: number) => void;
   // Cultivo arrastrándose sobre uno de los bancales, si lo hay.
   preview?: CanvasPreview | null;
@@ -53,15 +62,18 @@ export default function GardenCanvas({
   beds,
   distribution,
   plantsById,
-  mode,
+  board,
+  irrigationByBed,
   onBedSelect,
   preview,
   svgRef,
 }: GardenCanvasProps) {
   const titleId = useId();
-  const modeLabel = mode === "actual" ? "actual" : "planificada";
+  const isIrrigation = board.kind === "irrigation";
   const interactive = onBedSelect != null;
-  const canvasLabel = `Distribución ${modeLabel} del huerto`;
+  const canvasLabel = isIrrigation
+    ? "Riego del huerto"
+    : `Distribución ${board.mode === "actual" ? "actual" : "planificada"} del huerto`;
 
   // El recuadro de hover lo lleva el lienzo y no cada bancal: es HTML, y
   // dentro del <svg> no tendría dónde vivir.
@@ -85,6 +97,7 @@ export default function GardenCanvas({
 
   const tooltipRows = tooltip ? distribution.get(tooltip.bed.id) ?? [] : [];
   const tooltipLines = bedCropLines(tooltipRows, plantsById);
+  const tooltipIrrigation = tooltip ? irrigationInfo(irrigationByBed.get(tooltip.bed.id)) : null;
 
   return (
     <div className="w-full h-full">
@@ -97,13 +110,13 @@ export default function GardenCanvas({
           // exponen: los bancales clicables quedarían fuera del alcance de
           // un lector de pantalla. Cuando se puede editar pasa a ser un
           // grupo, y cada bancal es un botón con su propia etiqueta (ver
-          // BedShape); la lista sr-only de abajo cubre el caso de solo
+          // BedFrame); la lista sr-only de abajo cubre el caso de solo
           // lectura, donde no hay nada que enfocar.
           role={interactive ? "group" : "img"}
           aria-labelledby={interactive ? undefined : titleId}
           aria-label={interactive ? canvasLabel : undefined}
           // El contenedor (ver HuertoView) ya tiene un alto acotado por
-          // el layout real -- navbar, ModeToggle, pestañas, márgenes --
+          // el layout real -- navbar, BoardToggle, pestañas, márgenes --
           // así que basta con max-width/max-height al 100% de ese
           // hueco: el <svg> es un elemento reemplazado (como <img>) y
           // encoge/crece manteniendo su proporción real (viewBox) hasta
@@ -123,18 +136,28 @@ export default function GardenCanvas({
             stroke="currentColor"
             strokeWidth={BED_STROKE_WIDTH}
           />
-          {beds.map((bed) => (
-            <BedShape
-              key={bed.id}
-              bed={bed}
-              // Ya vienen ordenados por order_number (bedsForDistribution).
-              rows={distribution.get(bed.id) ?? []}
-              plantsById={plantsById}
-              preview={preview?.bedId === bed.id ? preview : null}
-              onSelect={onBedSelect}
-              onHoverChange={handleHoverChange}
-            />
-          ))}
+          {beds.map((bed) =>
+            isIrrigation ? (
+              <IrrigationBedShape
+                key={bed.id}
+                bed={bed}
+                level={irrigationByBed.get(bed.id)}
+                onSelect={onBedSelect}
+                onHoverChange={handleHoverChange}
+              />
+            ) : (
+              <BedShape
+                key={bed.id}
+                bed={bed}
+                // Ya vienen ordenados por order_number (bedsForDistribution).
+                rows={distribution.get(bed.id) ?? []}
+                plantsById={plantsById}
+                preview={preview?.bedId === bed.id ? preview : null}
+                onSelect={onBedSelect}
+                onHoverChange={handleHoverChange}
+              />
+            ),
+          )}
         </svg>
       </div>
 
@@ -155,7 +178,18 @@ export default function GardenCanvas({
           <p className="text-xs font-semibold uppercase tracking-wide text-white/50">
             {tooltip.bed.name}
           </p>
-          {tooltipLines.length === 0 ? (
+          {/* En riego el recuadro dice el nivel. Si siguiera listando
+              cultivos, un bancal plantado se leería igual en las dos
+              lecturas, y uno vacío diría "Vacío" hablando de otra cosa. */}
+          {isIrrigation && tooltipIrrigation ? (
+            <p className="mt-1 flex items-center gap-2 text-sm text-white">
+              <tooltipIrrigation.Icon
+                size={16}
+                className={`shrink-0 ${tooltipIrrigation.text}`}
+              />
+              {tooltipIrrigation.label}
+            </p>
+          ) : tooltipLines.length === 0 ? (
             <p className="mt-1 text-sm text-white/60">Vacío</p>
           ) : (
             <ul className="mt-1.5 flex flex-col gap-1">
@@ -180,7 +214,11 @@ export default function GardenCanvas({
       {!interactive && (
         <ul className="sr-only">
           {beds.map((bed) => (
-            <li key={bed.id}>{bedSummary(bed, distribution.get(bed.id) ?? [], plantsById)}</li>
+            <li key={bed.id}>
+              {isIrrigation
+                ? `${bed.name}: riego ${irrigationInfo(irrigationByBed.get(bed.id)).label.toLowerCase()}`
+                : bedSummary(bed, distribution.get(bed.id) ?? [], plantsById)}
+            </li>
           ))}
         </ul>
       )}

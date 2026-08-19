@@ -18,6 +18,7 @@ vi.mock("next/image", () => ({
 // cuanto monta. Por defecto se responde que no: es el caso de la mayoría
 // de usuarios y deja la vista igual que antes de esta funcionalidad.
 const getGardenPermissionAction = vi.fn(async () => ({ canManage: false }));
+const setIrrigationLevelAction = vi.fn();
 
 vi.mock("@/app/(app)/huerto/actions", () => ({
   getGardenPermissionAction: () => getGardenPermissionAction(),
@@ -33,12 +34,13 @@ vi.mock("@/app/(app)/huerto/actions", () => ({
   addCropDiaryEntryAction: vi.fn(),
   updateCropDiaryEntryAction: vi.fn(),
   deleteCropDiaryEntryAction: vi.fn(),
+  setIrrigationLevelAction: (...args: unknown[]) => setIrrigationLevelAction(...args),
 }));
 
 import { addPlantBedAction } from "@/app/(app)/huerto/actions";
 import HuertoView from "@/app/(app)/huerto/components/HuertoView";
 import { HUERTO_TAB_IDS } from "@/app/(app)/huerto/components/HuertoTabs";
-import type { GardenBed, Plant, PlantBed } from "@/types/garden";
+import type { GardenBed, Irrigation, Plant, PlantBed } from "@/types/garden";
 
 const beds: GardenBed[] = [{ id: 1, name: "Bancal", width: 100, height: 100, pos_x: 0, pos_y: 0 }];
 
@@ -52,9 +54,14 @@ const plantBeds: PlantBed[] = [
   { id: 2, plant_id: 2, garden_bed_id: 1, description: null, is_future: true, order_number: 0 },
 ];
 
+// Toda fila de garden_bed tiene la suya (backfill + trigger), asi que el
+// fixture las trae igual que llegarian del servidor.
+const irrigation: Irrigation[] = [{ garden_bed_id: 1, irrigation_level: "CERRADO" }];
+
 beforeEach(() => {
   cleanup();
   getGardenPermissionAction.mockResolvedValue({ canManage: false });
+  setIrrigationLevelAction.mockReset();
   // useIsMobile (arrastre solo en escritorio) consulta matchMedia, que
   // jsdom no implementa. Se responde "no coincide" = escritorio.
   vi.stubGlobal("matchMedia", (query: string) => ({
@@ -68,7 +75,7 @@ beforeEach(() => {
 describe("HuertoView", () => {
   it("al montar se muestra la distribución Actual", () => {
     const { container } = render(
-      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />,
+      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />,
     );
     expect(container.querySelectorAll("image")).toHaveLength(1);
   });
@@ -76,7 +83,7 @@ describe("HuertoView", () => {
   it("pulsar Planificar cambia los bancales dibujados", async () => {
     const user = userEvent.setup();
     const { container } = render(
-      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />,
+      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />,
     );
     await user.click(screen.getByRole("button", { name: "Planificar" }));
     // Ajo (actual) desaparece del lienzo, Sandía (futuro) aparece: sigue
@@ -86,7 +93,7 @@ describe("HuertoView", () => {
 
   it("cambiar de mes recompone las tres listas sin pedir datos de red", async () => {
     const user = userEvent.setup();
-    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />);
+    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />);
 
     const siembraSection = screen.getByText("Siembra:").closest("section")!;
     expect(within(siembraSection).getByRole("img", { name: "Ajo" })).toBeInTheDocument();
@@ -99,7 +106,7 @@ describe("HuertoView", () => {
   });
 
   it("en móvil, la pestaña no activa no está en el árbol accesible", () => {
-    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />);
+    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />);
     const cultivosPanel = document.getElementById(HUERTO_TAB_IDS.cultivosPanel);
     const bancalPanel = document.getElementById(HUERTO_TAB_IDS.bancalPanel);
     expect(cultivosPanel).toHaveClass("hidden");
@@ -111,7 +118,7 @@ describe("HuertoView", () => {
   it("sin permiso de edición los bancales se abren igual, pero sin nada que editar", async () => {
     const user = userEvent.setup();
     const { container } = render(
-      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />,
+      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />,
     );
     await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
 
@@ -130,7 +137,7 @@ describe("HuertoView", () => {
     getGardenPermissionAction.mockResolvedValue({ canManage: true });
     const user = userEvent.setup();
     const { container } = render(
-      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />,
+      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />,
     );
 
     const bedButton = await waitFor(() => {
@@ -174,7 +181,7 @@ describe("HuertoView · plantar tocando (movil)", () => {
   // Deja la vista con "Ajo" esperando bancal, partiendo de la pestaña de
   // cultivos para que el cambio de pestaña sea observable.
   async function startPlanting(user: ReturnType<typeof userEvent.setup>) {
-    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />);
+    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />);
     await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
 
     await user.click(screen.getByRole("tab", { name: "Cultivos" }));
@@ -271,7 +278,7 @@ describe("HuertoView · plantar tocando (movil)", () => {
   it("en escritorio no se ofrece: alli el cultivo se arrastra hasta el bancal", async () => {
     stubViewport(false);
     const user = userEvent.setup();
-    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />);
+    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />);
     await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
 
     // Con arrastre activo el icono ya no resuelve el clic el mismo, asi que
@@ -289,7 +296,7 @@ describe("HuertoView · plantar tocando (movil)", () => {
     stubViewport(true);
     getGardenPermissionAction.mockResolvedValue({ canManage: false });
     const user = userEvent.setup();
-    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />);
+    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />);
     await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
 
     await user.click(screen.getByRole("button", { name: "Ajo" }));
@@ -330,7 +337,7 @@ describe("HuertoView · mantener pulsado un cultivo (movil)", () => {
   // congelado. El permiso se resuelve antes de congelarlo: es una promesa, y
   // con timers falsos no llegaria nunca.
   async function renderWithIcon(name: string) {
-    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} initialMonth={1} />);
+    render(<HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />);
     await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
     // Que la accion se haya llamado no basta: el permiso viaja en una promesa
     // y hasta que no aterriza en el estado el gesto todavia no esta montado.
@@ -353,6 +360,34 @@ describe("HuertoView · mantener pulsado un cultivo (movil)", () => {
     fireEvent.click(icon);
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/Toca un bancal para plantar\s*Ajo/);
+    expect(document.getElementById(HUERTO_TAB_IDS.bancalPanel)).not.toHaveClass("hidden");
+  });
+
+  // El gesto se hace en la pestaña de Cultivos, sin ver el lienzo: quien lo
+  // empieza no tiene por que acordarse de que lo dejo en Riego, donde no hay
+  // donde plantar. Volver a Actual es parte de empezar a plantar.
+  it("mantener pulsado estando en Riego devuelve el lienzo a Actual", async () => {
+    stubViewport(true);
+    const { container } = render(
+      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />,
+    );
+    await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "Riego" }));
+    expect(container.querySelector("svg > title")).toHaveTextContent("Riego del huerto");
+
+    const icon = screen.getByRole("button", { name: "Ajo" });
+    vi.useFakeTimers();
+    fireEvent.pointerDown(icon, { pointerType: "touch", clientX: 10, clientY: 10 });
+    act(() => vi.advanceTimersByTime(LONGER_THAN_LONG_PRESS));
+    fireEvent.pointerUp(icon, { pointerType: "touch" });
+    fireEvent.click(icon);
+
+    expect(container.querySelector("svg > title")).toHaveTextContent(
+      "Distribución actual del huerto",
+    );
     expect(screen.getByRole("status")).toHaveTextContent(/Toca un bancal para plantar\s*Ajo/);
     expect(document.getElementById(HUERTO_TAB_IDS.bancalPanel)).not.toHaveClass("hidden");
   });
@@ -433,5 +468,70 @@ describe("HuertoView · mantener pulsado un cultivo (movil)", () => {
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByText(/Mantén pulsado un cultivo/)).not.toBeInTheDocument();
+  });
+});
+
+// Describe propio y de nivel superior: los de "movil" traen su beforeEach
+// con canManage=true, y el riego se juega justo en quien tiene permiso.
+describe("HuertoView · riego", () => {
+  const renderView = () =>
+    render(
+      <HuertoView plants={plants} beds={beds} plantBeds={plantBeds} irrigation={irrigation} initialMonth={1} />,
+    );
+
+  it("sustituye los cultivos por un icono de nivel por bancal", async () => {
+    const user = userEvent.setup();
+    const { container } = renderView();
+    expect(container.querySelectorAll("image")).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "Riego" }));
+
+    // El icono de la planta desaparece: en riego no se dibuja ningun cultivo.
+    expect(container.querySelectorAll("image")).toHaveLength(0);
+    expect(container.querySelector("svg > title")).toHaveTextContent("Riego del huerto");
+  });
+
+  // El permiso funciona al reves que en cultivos: alli cualquiera abre un
+  // bancal para consultarlo, aqui lo unico que se puede hacer es escribir.
+  it("sin permiso los bancales no son clicables", async () => {
+    const user = userEvent.setup();
+    const { container } = renderView();
+    await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Riego" }));
+
+    expect(container.querySelectorAll('g[role="button"]')).toHaveLength(0);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("con permiso, elegir un nivel lo guarda y repinta el bancal", async () => {
+    getGardenPermissionAction.mockResolvedValue({ canManage: true });
+    setIrrigationLevelAction.mockResolvedValue({
+      ok: true,
+      row: { garden_bed_id: 1, irrigation_level: "ABIERTO" },
+    });
+    const user = userEvent.setup();
+    const { container } = renderView();
+    await waitFor(() => expect(getGardenPermissionAction).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Riego" }));
+
+    const bed = await waitFor(() => {
+      const g = container.querySelector('g[role="button"]');
+      if (!g) throw new Error("el bancal aun no es clicable");
+      return g;
+    });
+    expect(bed).toHaveAttribute("aria-label", "Bancal: riego cerrado");
+    await act(async () => {
+      bed.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    await user.click(screen.getByRole("button", { name: /Abierto/ }));
+
+    expect(setIrrigationLevelAction).toHaveBeenCalledWith(1, "ABIERTO");
+    // El modal se cierra y el bancal ya se anuncia con el nivel nuevo.
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(container.querySelector('g[role="button"]')).toHaveAttribute(
+      "aria-label",
+      "Bancal: riego abierto",
+    );
   });
 });
