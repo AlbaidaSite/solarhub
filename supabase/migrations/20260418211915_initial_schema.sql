@@ -109,11 +109,12 @@ CREATE TABLE plant (
   icon_path text NOT NULL,
   seed_info text,
   harvest_info text,
-  -- Corregido a escalar: así es como quedó realmente esta migración
-  -- aplicada en producción (divergió de este archivo en algún punto).
-  -- 20260811140200_plant_month_vocabulary.sql asume este tipo al migrar
-  -- a smallint[]; si aquí siguiera diciendo text[], un reset local
-  -- partiría de un esquema que esa migración no sabe leer.
+  -- OJO: este archivo se editó (text[] -> text) cuando prod ya lo había
+  -- aplicado, así que el cambio nunca llegó allí: dev tiene `text` y
+  -- prod sigue con `text[]`. No intentes unificarlo tocando esta línea,
+  -- solo afecta a entornos nuevos. Quien resuelve la divergencia es
+  -- 20260811140200_plant_month_vocabulary.sql, que mira el tipo real de
+  -- cada columna en tiempo de ejecución antes de convertir a smallint[].
   months_of_growth text,
   months_of_harvest text
 );
