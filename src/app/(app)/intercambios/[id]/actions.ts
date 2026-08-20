@@ -36,11 +36,19 @@ export async function unacceptTradeAction(tradeId: number): Promise<TradeDetailR
 
 // ─── Cromos propios disponibles para añadir a la oferta ──────────────────────
 
+export interface OwnedUniqueForTrade {
+  uniqueId: number;
+  copyNumber: number;
+  // true si la copia ya está comprometida en otro intercambio abierto: se
+  // muestra tachada y no seleccionable (mismo criterio que el modal de cromo).
+  inTrade: boolean;
+}
+
 export interface OwnedCromoForTrade {
   cromoId: number;
   cromoName: string;
   thumbPath: string | null;
-  uniques: Array<{ uniqueId: number; copyNumber: number }>;
+  uniques: OwnedUniqueForTrade[];
 }
 
 type OwnedUniqueRow = {
@@ -60,21 +68,35 @@ export async function getUserOwnedCromosForTradeAction(
   if (!auth.ok) return [];
   const { supabase, userId } = auth;
 
-  // Uniques ya presentes en esta oferta (para excluirlos)
-  const { data: alreadyInOffer } = await supabase
-    .from("trade_unique")
-    .select("unique_id")
-    .eq("trade_offer_id", tradeOfferId)
-    .returns<Array<{ unique_id: number }>>();
-  const alreadyIds = new Set((alreadyInOffer ?? []).map((r) => r.unique_id));
+  const [{ data: alreadyInOffer }, { data: committedElsewhere }, { data: owned }] =
+    await Promise.all([
+      // Uniques ya presentes en esta oferta (para excluirlos)
+      supabase
+        .from("trade_unique")
+        .select("unique_id")
+        .eq("trade_offer_id", tradeOfferId)
+        .returns<Array<{ unique_id: number }>>(),
+      // Uniques del usuario comprometidos en OTRO intercambio aún abierto: el
+      // trigger trg_unique_not_in_active_trade rechazaría el insert, así que
+      // se listan pero deshabilitados.
+      supabase
+        .from("trade_unique")
+        .select("unique_id, trade_offer!inner(user_id, trade:trade_id!inner(is_mutual_agreement))")
+        .eq("trade_offer.user_id", userId)
+        .eq("trade_offer.trade.is_mutual_agreement", false)
+        .neq("trade_offer_id", tradeOfferId)
+        .returns<Array<{ unique_id: number }>>(),
+      // Uniques que el usuario posee ahora mismo, con info del cromo
+      supabase
+        .from("unique_ownership")
+        .select("unique_cromo!inner(id, copy_number, cromo:cromo_id(id, name, front_img))")
+        .eq("user_id", userId)
+        .eq("is_current_owner", true)
+        .returns<OwnedUniqueRow[]>(),
+    ]);
 
-  // Uniques que el usuario posee ahora mismo, con info del cromo
-  const { data: owned } = await supabase
-    .from("unique_ownership")
-    .select("unique_cromo!inner(id, copy_number, cromo:cromo_id(id, name, front_img))")
-    .eq("user_id", userId)
-    .eq("is_current_owner", true)
-    .returns<OwnedUniqueRow[]>();
+  const alreadyIds = new Set((alreadyInOffer ?? []).map((r) => r.unique_id));
+  const inTradeIds = new Set((committedElsewhere ?? []).map((r) => r.unique_id));
 
   const map = new Map<number, OwnedCromoForTrade>();
   for (const row of owned ?? []) {
@@ -85,10 +107,23 @@ export async function getUserOwnedCromosForTradeAction(
     if (!map.has(c.id)) {
       map.set(c.id, { cromoId: c.id, cromoName: c.name, thumbPath: c.front_img, uniques: [] });
     }
-    map.get(c.id)!.uniques.push({ uniqueId: uc.id, copyNumber: uc.copy_number });
+    map.get(c.id)!.uniques.push({
+      uniqueId: uc.id,
+      copyNumber: uc.copy_number,
+      inTrade: inTradeIds.has(uc.id),
+    });
   }
 
-  return [...map.values()].sort((a, b) => a.cromoName.localeCompare(b.cromoName, "es"));
+  // Los cromos con todas sus copias comprometidas caen al fondo de la lista;
+  // dentro de cada grupo se mantiene el orden alfabético.
+  for (const c of map.values()) c.uniques.sort((a, b) => a.copyNumber - b.copyNumber);
+
+  return [...map.values()].sort((a, b) => {
+    const aBlocked = a.uniques.every((u) => u.inTrade);
+    const bBlocked = b.uniques.every((u) => u.inTrade);
+    if (aBlocked !== bBlocked) return aBlocked ? 1 : -1;
+    return a.cromoName.localeCompare(b.cromoName, "es");
+  });
 }
 
 export async function addUniqueToOfferAction(
