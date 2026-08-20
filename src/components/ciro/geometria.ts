@@ -70,10 +70,11 @@ export const TAMANO_POR_DEFECTO = 400;
 // De ahí el `calc` de anchoFluido; subirla = encoger antes.
 //
 // El no-solape estricto sale a 320 = 384 (max-w-sm) − 64 (el pr-16/pl-16 de
-// cada mitad). Se le restan 48 (24 de invasión por lado) porque lo que llega
-// a esa altura es solo la punta afilada de una llama, no su caja: dejarle
-// morder un poco el margen del formulario se nota mucho menos que tener a
-// Ciro flotando en un hueco que le queda grande.
+// cada mitad). Se queda por debajo a propósito: lo que llega a esa altura es
+// solo la punta afilada de una llama, no su caja, y dejarle morder el borde
+// del formulario se nota mucho menos que tener a Ciro flotando en un hueco
+// que le queda grande. Cada 2px que se bajen de 320 son 1px de invasión por
+// lado — con 250, 35px por lado.
 export const RESERVA_FORMULARIO = 250;
 
 // Tope por alto de ventana, para que Ciro no desborde en pantallas apaisadas

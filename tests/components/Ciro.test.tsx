@@ -12,7 +12,7 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, fireEvent } from "@testing-library/react";
 import Ciro from "@/components/ciro/Ciro";
-import { AMPLITUD_LATIDO, cqw, G } from "@/components/ciro/geometria";
+import { AMPLITUD_LATIDO, anchoFluido, cqw, G } from "@/components/ciro/geometria";
 
 type Entorno = {
   ancho?: boolean; // (min-width: 768px)
@@ -105,13 +105,14 @@ describe("Ciro · estructura", () => {
     expect(root.className).toContain("pointer-events-none");
   });
 
+  // El valor concreto del min() se comprueba en geometria.test.ts, que es
+  // donde vive la calibración. Aquí solo interesa el cableado: que el lado
+  // salga de anchoFluido(size) y llegue a la variable que lee .ciro-raiz.
   it("el ancho está acotado por size pero encoge con la ventana", () => {
     stubMatchMedia({ ancho: false });
     const { container } = render(<Ciro size={400} />);
     const root = container.firstElementChild as HTMLElement;
-    expect(root.style.getPropertyValue("--ciro-lado")).toBe(
-      "min(400px, calc(50vw - 200px), 60vh)",
-    );
+    expect(root.style.getPropertyValue("--ciro-lado")).toBe(anchoFluido(400));
     expect(root.className).toContain("ciro-raiz");
   });
 

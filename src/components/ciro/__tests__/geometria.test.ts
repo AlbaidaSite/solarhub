@@ -121,26 +121,49 @@ describe("anchoFluido", () => {
     );
   });
 
-  // Comprobación de la propia fórmula: el hueco entre formularios mide
-  // 2 × (mitad de la ventana − RESERVA_FORMULARIO), y Ciro va centrado, así
-  // que su ancho sale de ahí en cuanto la ventana deja de dar para el tamaño
-  // completo.
-  it("el término en calc equivale al hueco libre entre los dos formularios", () => {
-    const anchoLibre = (ventana: number) => ventana / 2 - RESERVA_FORMULARIO;
-    // A 1366px todavía cabe a tamaño completo; a 1280 ya tiene que encoger.
-    expect(anchoLibre(1366)).toBeGreaterThan(TAMANO_POR_DEFECTO);
-    expect(anchoLibre(1280)).toBeLessThan(TAMANO_POR_DEFECTO);
-    expect(anchoLibre(1280)).toBeGreaterThan(0);
+  // RESERVA_FORMULARIO es una constante de calibración: se toca a ojo hasta
+  // que Ciro se ve bien (§11). Por eso lo que se fija aquí NO es su valor,
+  // sino las dos propiedades que tienen que seguir cumpliéndose la toque
+  // quien la toque.
+
+  // Lado del contenedor a un ancho de ventana dado, replicando el min() de
+  // anchoFluido. Se ignora el término en vh: solo puede achicar, así que
+  // omitirlo deja las comprobaciones del lado seguro.
+  const anchoEn = (ventana: number) =>
+    Math.min(TAMANO_POR_DEFECTO, ventana / 2 - RESERVA_FORMULARIO);
+
+  // Distancia del centro de la ventana al borde del formulario, según la
+  // maquetación de AuthView: cada mitad lleva pr-16/pl-16 (64px) y el
+  // formulario es w-full max-w-sm (384px) centrado en lo que queda.
+  const huecoAlFormulario = (ventana: number) => {
+    const caja = ventana / 2 - 64;
+    const formulario = Math.min(384, caja);
+    return ventana / 2 - (caja / 2 + formulario / 2);
+  };
+
+  const ANCHOS = [768, 900, 1024, 1152, 1280, 1366, 1440, 1920, 2560];
+
+  // A las puntas de las llamas se les deja morder el borde del formulario a
+  // propósito, pero al cuerpo opaco no: si la cara llegara a taparlo, ya no
+  // sería un adorno sino un estorbo encima de los campos.
+  it("la cara nunca alcanza el formulario, por estrecha que sea la ventana", () => {
+    for (const ventana of ANCHOS) {
+      const semiCara = (anchoEn(ventana) * G.cara) / 2;
+      expect(semiCara).toBeLessThan(huecoAlFormulario(ventana));
+    }
   });
 
-  // La reserva le permite a la punta de la llama morder un poco el margen
-  // del formulario, pero solo un poco: si se pasara del no-solape estricto
-  // (320) en más de lo previsto, Ciro se plantaría encima de los campos.
-  it("no invade el formulario más allá del margen previsto", () => {
-    const NO_SOLAPE_ESTRICTO = 384 - 64;
-    const invasionPorLado = (NO_SOLAPE_ESTRICTO - RESERVA_FORMULARIO) / 2;
-    expect(invasionPorLado).toBeGreaterThanOrEqual(0);
-    expect(invasionPorLado).toBeLessThanOrEqual(32);
+  it("Ciro sigue siendo visible y nunca pasa de su tamaño máximo", () => {
+    for (const ventana of ANCHOS) {
+      expect(anchoEn(ventana)).toBeGreaterThan(0);
+      expect(anchoEn(ventana)).toBeLessThanOrEqual(TAMANO_POR_DEFECTO);
+    }
+  });
+
+  it("encoge de forma monótona: a menos ventana, nunca más Ciro", () => {
+    for (let i = 1; i < ANCHOS.length; i++) {
+      expect(anchoEn(ANCHOS[i])).toBeGreaterThanOrEqual(anchoEn(ANCHOS[i - 1]));
+    }
   });
 });
 
