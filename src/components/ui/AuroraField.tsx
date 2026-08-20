@@ -11,6 +11,19 @@ import { ChevronDown } from "lucide-react";
 type FieldSize = "sm" | "md";
 type IconPosition = "left" | "right";
 
+// Tipos de input que el navegador acompaña de un selector nativo
+// (calendario, reloj…). Para estos, un clic en CUALQUIER punto del campo
+// abre el selector: el comportamiento por defecto solo lo abre pulsando el
+// pequeño icono de calendario del borde derecho, y se quedaba escribiendo a
+// mano sobre los segmentos dd/mm/aaaa sin enterarse de que había calendario.
+const PICKER_INPUT_TYPES = new Set([
+  "date",
+  "datetime-local",
+  "month",
+  "time",
+  "week",
+]);
+
 type CommonProps = {
   label?: string;
   icon?: ReactNode;
@@ -40,6 +53,7 @@ type AuroraFieldProps = InputProps | SelectProps;
  * - Transparent background, bold text
  * - Underline fades to amber on focus (via group-focus-within)
  * - Icon is clickable: focuses the input / opens the select picker
+ * - Fields with a native picker (date, time…) open it on click, anywhere
  * - `iconPosition` ('right' default | 'left') puts the icon before or after the field
  * - `size` ('md' default | 'sm' compact)
  */
@@ -89,6 +103,15 @@ const AuroraField = forwardRef<
   const paddingY = isSm ? "py-1" : "py-2";
   const underlineHeight = isSm ? "h-1" : "h-1.5";
 
+  const inputDomProps = domProps as InputHTMLAttributes<HTMLInputElement>;
+
+  // El select siempre tiene selector propio; el input solo si su type es de
+  // los que lo traen (fecha, hora…).
+  const hasNativePicker =
+    as === "select" ||
+    (typeof inputDomProps.type === "string" &&
+      PICKER_INPUT_TYPES.has(inputDomProps.type));
+
   const resolvedIcon =
     as === "select"
       ? icon ?? <ChevronDown size={iconSize} strokeWidth={2.5} />
@@ -103,6 +126,22 @@ const AuroraField = forwardRef<
     ${className}
   `;
 
+  // showPicker() lanza si el elemento está deshabilitado, oculto o si la
+  // llamada no viene de un gesto del usuario; devolvemos false para que quien
+  // llame decida el plan B (normalmente, enfocar).
+  const openNativePicker = (): boolean => {
+    const el = internalRef.current as
+      | ((HTMLInputElement | HTMLSelectElement) & { showPicker?: () => void })
+      | null;
+    if (!el || typeof el.showPicker !== "function") return false;
+    try {
+      el.showPicker();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const handleIconClick = () => {
     if (onIconClick) {
       onIconClick();
@@ -110,18 +149,10 @@ const AuroraField = forwardRef<
     }
     const el = internalRef.current;
     if (!el) return;
-    if (as === "select") {
-      const sel = el as HTMLSelectElement & { showPicker?: () => void };
-      if (typeof sel.showPicker === "function") {
-        try {
-          sel.showPicker();
-          return;
-        } catch {
-          // showPicker can throw if the element isn't focused/visible; fall through to focus()
-        }
-      }
-    }
+    // Enfocar ANTES de abrir el selector: así el subrayado pasa a ámbar
+    // aunque el picker se lleve la interacción.
     el.focus();
+    if (hasNativePicker) openNativePicker();
   };
 
   return (
@@ -154,12 +185,16 @@ const AuroraField = forwardRef<
             </select>
           ) : (
             <input
-              {...(domProps as InputHTMLAttributes<HTMLInputElement>)}
+              {...inputDomProps}
+              onClick={(e) => {
+                inputDomProps.onClick?.(e);
+                if (hasNativePicker && !e.defaultPrevented) openNativePicker();
+              }}
               ref={setRef as React.Ref<HTMLInputElement>}
               id={fieldId}
               aria-invalid={!!error}
               aria-describedby={error ? errorId : undefined}
-              className={sharedFieldClasses}
+              className={`${sharedFieldClasses} ${hasNativePicker ? "cursor-pointer" : ""}`}
             />
           )}
 

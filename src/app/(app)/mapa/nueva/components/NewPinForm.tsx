@@ -7,8 +7,9 @@ import { AlertCircle, ArrowLeft, Calendar, CheckCircle2, Loader2, MapPin, Search
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
 import { parseCoordinates } from "@/lib/parseCoordinates";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { supabase } from "@/lib/supabase/client";
-import { addMapMediaAction, createPinAction } from "../../actions";
+import { addMapMediaAction, createPinAction, deletePinAction } from "../../actions";
 import type { MediaItemToInsert } from "../../actions";
 import MediaSection from "./MediaSection";
 import type { MediaEntry } from "./MediaSection";
@@ -102,6 +103,7 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
   const [uploadStatuses, setUploadStatuses] = useState<Record<string, EntryUploadStatus>>({});
   const [uploadFailures, setUploadFailures] = useState<UploadFailure[]>([]);
   const [createdPinId, setCreatedPinId] = useState<number | null>(null);
+  const [isDiscarding, setIsDiscarding] = useState(false);
 
   const countryWrapperRef = useRef<HTMLDivElement>(null);
 
@@ -253,6 +255,12 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
     if (!dateValue) { setSubmitError("La fecha es obligatoria"); return; }
     if (hasProcessing) { setSubmitError("Espera a que terminen de procesarse los archivos"); return; }
     if (hasMediaErrors) { setSubmitError("Elimina los archivos con error antes de guardar"); return; }
+    // El multimedia es obligatorio: una pegatina sin foto ni vídeo no
+    // aporta nada al mapa y no hay forma de verificarla.
+    if (readyEntries.length === 0) {
+      setSubmitError("Añade al menos una foto o un vídeo");
+      return;
+    }
 
     setSubmitPhase("uploading");
 
@@ -277,18 +285,11 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
     const pinId = pinResult.pinId;
     setCreatedPinId(pinId);
 
-    // 2. Upload media (if any)
-    if (readyEntries.length === 0) {
-      router.push("/mapa");
-      router.refresh();
-      return;
-    }
-
+    // 2. Upload media — siempre hay al menos uno (validado arriba)
     const failures = await runUploadRound(pinId, readyEntries);
 
     if (failures.length === 0) {
       router.push("/mapa");
-      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -312,7 +313,6 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
 
     if (failures.length === 0) {
       router.push("/mapa");
-      router.refresh();
     } else {
       setUploadFailures(failures);
       setSubmitPhase("partial_error");
@@ -320,8 +320,28 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
   };
 
   // ---------------------------------------------------------------------------
+  // Descartar el pin recién creado
+  // ---------------------------------------------------------------------------
+
+  // Si ninguna subida cuajó, el pin quedaría publicado sin multimedia,
+  // que es justo lo que la regla prohíbe. La única salida sin reintentar
+  // es deshacer el alta.
+  const handleDiscard = async () => {
+    if (!createdPinId) return;
+    setIsDiscarding(true);
+    await deletePinAction(createdPinId);
+    router.push("/mapa");
+  };
+
+  // ---------------------------------------------------------------------------
   // Upload progress / error view
   // ---------------------------------------------------------------------------
+
+  // Archivos que SÍ llegaron a adjuntarse al pin. Con cero, el pin
+  // incumple la regla de multimedia obligatorio y no se puede "continuar".
+  const attachedCount = Object.values(uploadStatuses).filter(
+    (st) => st.kind === "ok",
+  ).length;
 
   if (submitPhase === "uploading" || submitPhase === "partial_error") {
     return (
@@ -338,7 +358,9 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
           )}
           {submitPhase === "partial_error" && (
             <p className="text-chip text-amber-300 text-sm">
-              El pin se guardó correctamente pero algunos archivos no se pudieron subir.
+              {attachedCount > 0
+                ? "El pin se guardó correctamente pero algunos archivos no se pudieron subir."
+                : "El pin se guardó pero no se pudo subir ningún archivo. Una pegatina no puede quedarse sin multimedia: reintenta la subida o descarta el pin."}
             </p>
           )}
 
@@ -376,13 +398,24 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
               <CornerButton type="button" onClick={handleRetry} className="self-start">
                 Reintentar archivos fallidos
               </CornerButton>
-              <button
-                type="button"
-                onClick={() => { router.push("/mapa"); router.refresh(); }}
-                className="text-sm text-white/50 hover:text-white transition-colors self-start cursor-pointer"
-              >
-                Continuar sin esos archivos
-              </button>
+              {attachedCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => { router.push("/mapa"); }}
+                  className="text-sm text-white/50 hover:text-white transition-colors self-start cursor-pointer"
+                >
+                  Continuar sin esos archivos
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleDiscard}
+                  disabled={isDiscarding}
+                  className="text-sm text-white/50 hover:text-red-400 transition-colors self-start cursor-pointer disabled:opacity-50"
+                >
+                  {isDiscarding ? "Descartando…" : "Descartar la pegatina"}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -409,11 +442,15 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
 
       <h1 className="text-3xl font-bold text-white mb-8">Nueva pegatina</h1>
 
-      <form onSubmit={handleSubmit} className="w-full max-w-lg flex flex-col gap-8">
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={preventEnterSubmit}
+        className="w-full max-w-lg flex flex-col gap-8"
+      >
 
         {/* 1. Sticker selector */}
         <fieldset>
-          <legend className="text-sm font-medium text-zinc-400 mb-3">
+          <legend className="text-base md:text-lg font-medium text-zinc-400 mb-3">
             Pegatina <span className="text-red-400">*</span>
           </legend>
           <div className="grid grid-cols-5 gap-2">
@@ -449,9 +486,35 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
           )}
         </fieldset>
 
-        {/* 2. Country combobox */}
+        {/* 2. Place */}
+        <div className="flex flex-col gap-1">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
+            Lugar donde se colocó <span className="text-red-400">*</span>
+          </label>
+          <AuroraField
+            type="text"
+            placeholder="Ej: Parque del Retiro"
+            value={place}
+            onChange={(e) => setPlace(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+
+        {/* 3. State (optional) */}
+        <div className="flex flex-col gap-1">
+          <label className="text-base md:text-lg font-medium text-zinc-400">Ciudad</label>
+          <AuroraField
+            type="text"
+            placeholder="Ej: Sevilla"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+
+        {/* 4. Country combobox */}
         <div ref={countryWrapperRef} className="relative flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             País <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -484,35 +547,9 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
           )}
         </div>
 
-        {/* 3. State (optional) */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">Provincia</label>
-          <AuroraField
-            type="text"
-            placeholder="Ej: Sevilla"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
-
-        {/* 4. Place */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
-            Lugar <span className="text-red-400">*</span>
-          </label>
-          <AuroraField
-            type="text"
-            placeholder="Ej: Parque del Retiro"
-            value={place}
-            onChange={(e) => setPlace(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
-
         {/* 5. Coordinates */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
+          <label className="text-base md:text-lg font-medium text-zinc-400">
             Coordenadas <span className="text-red-400">*</span>
           </label>
           <AuroraField
@@ -539,8 +576,8 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
 
         {/* 6. Date */}
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-400">
-            Fecha <span className="text-red-400">*</span>
+          <label className="text-base md:text-lg font-medium text-zinc-400">
+            Fecha en la que se colocó <span className="text-red-400">*</span>
           </label>
           <AuroraField
             type="date"
@@ -558,6 +595,7 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
           onAdd={handleAddMedia}
           onRemove={handleRemoveMedia}
           onUpdate={handleUpdateMedia}
+          required
         />
 
         {/* Submit error */}

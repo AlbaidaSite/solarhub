@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { AtSign, Lock } from "lucide-react";
+import { AtSign, Eye, EyeClosed } from "lucide-react";
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
 import { supabase } from "@/lib/supabase/client";
 
 export default function LoginForm() {
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -86,10 +87,12 @@ export default function LoginForm() {
       />
 
       <AuroraField
-        type="password"
+        type={showPassword ? "text" : "password"}
         name="password"
         placeholder="Contraseña"
-        icon={<Lock size={20} strokeWidth={2.5} />}
+        icon={showPassword ? <EyeClosed size={20} strokeWidth={2.5} /> : <Eye size={20} strokeWidth={2.5} />}
+        onIconClick={() => setShowPassword((s) => !s)}
+        iconAriaLabel={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
         autoComplete="current-password"
         required
       />

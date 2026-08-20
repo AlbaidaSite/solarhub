@@ -95,7 +95,7 @@ export default async function TradeDetailPage({
   });
 
   return (
-    <div className="w-full max-w-5xl mx-auto flex flex-col gap-6 p-4 pt-6">
+    <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 p-4 pt-6">
       <div className="flex items-center gap-3">
         <Link
           href="/intercambios"

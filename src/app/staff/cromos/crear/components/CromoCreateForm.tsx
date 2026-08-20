@@ -74,7 +74,11 @@ export default function CromoCreateForm({
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isGenerating, startGenerating] = useTransition();
-  const [isCreating, startCreating] = useTransition();
+  // Estado normal, no useTransition: el router.push() del final dejaría la
+  // transición pendiente hasta que cargue el listado, y una navegación
+  // atascada congelaría el botón con el cromo ya guardado. Sigue puesto al
+  // navegar, para no enviar dos veces.
+  const [isCreating, setIsCreating] = useState(false);
 
   // Si cambian categoría o copias después de generar, los códigos quedan
   // desincronizados con la categoría/copias actual: invalidamos.
@@ -123,7 +127,7 @@ export default function CromoCreateForm({
     });
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     setCreateError(null);
 
     // Acumulamos todos los problemas antes de devolver, así el usuario ve la
@@ -165,21 +169,22 @@ export default function CromoCreateForm({
     fd.append("frontImage", frontImage!);
     fd.append("backImage", backImage!);
 
-    startCreating(async () => {
-      const result = await createCromoAction(fd);
-      if (result.ok) {
-        // Tras guardar OK, dispara la descarga del ZIP con un SVG por code.
-        // Si la descarga fallase, navegamos igualmente al listado.
-        try {
-          await downloadCromoCodesZip(finalCodes, name.trim(), Number(number));
-        } catch (err) {
-          console.error("Error generando ZIP:", err);
-        }
-        router.push("/staff/cromos");
-      } else {
-        setCreateError(result.error);
-      }
-    });
+    setIsCreating(true);
+    const result = await createCromoAction(fd);
+    if (!result.ok) {
+      setCreateError(result.error);
+      setIsCreating(false);
+      return;
+    }
+
+    // Tras guardar OK, dispara la descarga del ZIP con un SVG por code.
+    // Si la descarga fallase, navegamos igualmente al listado.
+    try {
+      await downloadCromoCodesZip(finalCodes, name.trim(), Number(number));
+    } catch (err) {
+      console.error("Error generando ZIP:", err);
+    }
+    router.push("/staff/cromos");
   };
 
   return (

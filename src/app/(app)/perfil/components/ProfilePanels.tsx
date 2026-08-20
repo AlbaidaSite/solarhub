@@ -1,17 +1,26 @@
 "use client";
 
 import { useState } from "react";
+import type { EventOccurrence } from "@/types/events";
+import type { HistoryEntry } from "../actions";
+import UpcomingEventsList from "./UpcomingEventsList";
+import HistoryList from "./HistoryList";
 
 type Panel = "eventos" | "historial";
 
-export default function ProfilePanels() {
+interface ProfilePanelsProps {
+  upcomingEvents: EventOccurrence[];
+  history: HistoryEntry[];
+}
+
+export default function ProfilePanels({ upcomingEvents, history }: ProfilePanelsProps) {
   const [panel, setPanel] = useState<Panel>("eventos");
 
   return (
     <div className="relative w-full flex flex-col md:flex-row md:items-stretch min-h-96">
       <div className="md:hidden w-full flex items-center justify-center gap-5 mb-8">
         <TabButton active={panel === "eventos"} onClick={() => setPanel("eventos")}>
-          Eventos pendientes
+          Próximos Eventos
         </TabButton>
         <span aria-hidden className="text-zinc-600 text-xl">/</span>
         <TabButton active={panel === "historial"} onClick={() => setPanel("historial")}>
@@ -21,9 +30,9 @@ export default function ProfilePanels() {
 
       <PanelSection visible={panel === "eventos"} side="left">
         <h2 className="hidden md:block text-2xl font-bold text-white text-center mb-4">
-          Eventos pendientes
+          Próximos Eventos
         </h2>
-        {/* Contenido pendiente */}
+        <UpcomingEventsList initialEvents={upcomingEvents} />
       </PanelSection>
 
       <div
@@ -35,7 +44,7 @@ export default function ProfilePanels() {
         <h2 className="hidden md:block text-2xl font-bold text-white text-center mb-4">
           Historial
         </h2>
-        {/* Contenido pendiente */}
+        <HistoryList entries={history} />
       </PanelSection>
     </div>
   );
@@ -63,6 +72,14 @@ function TabButton({
   );
 }
 
+// md:min-w-0 es lo que mantiene cada columna clavada en su mitad: sin él,
+// el min-width:auto de un flex item se resuelve al min-content de lo que
+// lleva dentro, y el min-content de una fila de evento incluye el título
+// entero (va con truncate, o sea white-space:nowrap). El min-w-0 de la
+// celda del título deja que encoja una vez repartido el ancho, pero no
+// rebaja lo que la columna declara necesitar, así que con un título largo
+// la columna se negaba a bajar del 50% y se metía por encima de la línea
+// divisoria. Vale para las dos columnas, Historial incluido.
 function PanelSection({
   visible,
   side,
@@ -78,7 +95,7 @@ function PanelSection({
         w-full
         ${visible ? "flex" : "hidden md:flex"}
         flex-col items-center
-        md:flex-1 ${side === "left" ? "md:pr-8" : "md:pl-8"}
+        md:flex-1 md:min-w-0 ${side === "left" ? "md:pr-8" : "md:pl-8"}
       `}
     >
       {children}

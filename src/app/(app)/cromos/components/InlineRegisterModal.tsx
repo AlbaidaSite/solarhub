@@ -9,7 +9,13 @@ import { CELL_COUNT, computeCode } from "@/app/(app)/cromos/lib/code";
 import FilterIconButton from "./FilterIconButton";
 import type { Category } from "@/types/cromo";
 
-const CELL_PX = 44; // celda más pequeña que en el registrar completo (60px)
+// Lado de la rejilla 4x4 dentro del modal. Ya no es un número fijo de
+// píxeles por celda: crece con el hueco real —ancho del modal y alto de
+// la ventana— igual que en la vista completa de registrar, y se queda
+// corto antes que desbordar. Los desplazamientos de -3px que solapan los
+// anillos son del grosor del borde, no del tamaño de la celda, así que
+// esto escala sin tocarlos.
+const GRID_SIDE = "clamp(11rem, min(70vw, 100dvh - 24rem), 20rem)";
 
 type SubmitActionResult =
   | { ok: true; idSlug?: string; uniqueId: number }
@@ -85,22 +91,22 @@ export default function InlineRegisterModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-zinc-950 border border-white/15 rounded-2xl p-5 max-w-xs w-full mx-4 flex flex-col gap-5"
+        className="bg-zinc-950 border border-white/15 rounded-2xl p-6 max-w-md sm:max-w-lg w-full flex flex-col gap-5 max-h-[90dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Cabecera */}
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-white">{title}</h2>
+          <h2 className="text-base font-bold text-white">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             className="p-1 rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
           >
-            <X size={16} />
+            <X size={32} />
           </button>
         </div>
 
@@ -112,7 +118,7 @@ export default function InlineRegisterModal({
               iconUrl={c.icon_path}
               label={c.name}
               active={selectedCategoryId === c.id}
-              size="sm"
+              size="lg"
               onClick={() => {
                 setSelectedCategoryId(c.id);
                 setMessage(null);
@@ -123,7 +129,7 @@ export default function InlineRegisterModal({
         </div>
 
         {/* Grid 4x4 compacto */}
-        <div className="relative mx-auto" style={{ width: `${CELL_PX * 4}px` }}>
+        <div className="relative mx-auto" style={{ width: GRID_SIDE }}>
           {/* Botones */}
           <div className="grid grid-cols-4">
             {cells.map((on, i) => {
@@ -135,12 +141,8 @@ export default function InlineRegisterModal({
                   type="button"
                   onClick={() => toggleCell(i)}
                   aria-pressed={on}
-                  style={{
-                    width: `${CELL_PX}px`,
-                    height: `${CELL_PX}px`,
-                    transform: `translate(${-3 * col}px, ${-3 * row}px)`,
-                  }}
-                  className={`rounded-full cursor-pointer transition-colors ${
+                  style={{ transform: `translate(${-3 * col}px, ${-3 * row}px)` }}
+                  className={`aspect-square rounded-full cursor-pointer transition-colors ${
                     on ? "bg-indigo-300 hover:bg-sky-300" : "bg-zinc-800/40 hover:bg-zinc-700/60"
                   }`}
                 />
@@ -155,12 +157,8 @@ export default function InlineRegisterModal({
               return (
                 <span
                   key={i}
-                  style={{
-                    width: `${CELL_PX}px`,
-                    height: `${CELL_PX}px`,
-                    transform: `translate(${-3 * col}px, ${-3 * row}px)`,
-                  }}
-                  className={`rounded-full border-[3px] transition-all duration-150 ${
+                  style={{ transform: `translate(${-3 * col}px, ${-3 * row}px)` }}
+                  className={`aspect-square rounded-full border-[3px] transition-all duration-150 ${
                     on ? "z-10 border-cyan-700" : "border-cyan-900"
                   }`}
                 />

@@ -1,7 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
 import { Field, FIELD_CLASS, SubmitButton } from "../../../components/form";
 import type { ArtistActionResult } from "../actions";
 
@@ -19,24 +20,29 @@ export default function ArtistForm({
   submitLabel,
 }: ArtistFormProps) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  // Estado normal en vez de useTransition: el router.push() de dentro
+  // mantendría la transición pendiente hasta que cargue el destino, y una
+  // navegación atascada dejaría el botón en "Guardando…" con el artista ya
+  // guardado. Sigue puesto al navegar, para no enviar dos veces.
+  const [isPending, setIsPending] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    startTransition(async () => {
-      const result = await action(fd);
-      if (result.ok) {
-        router.push("/staff/cromos/artistas");
-      } else {
-        alert(result.error);
-      }
-    });
+    setIsPending(true);
+    const result = await action(fd);
+    if (!result.ok) {
+      alert(result.error);
+      setIsPending(false);
+      return;
+    }
+    router.push("/staff/cromos/artistas");
   };
 
   return (
     <form
       onSubmit={handleSubmit}
+      onKeyDown={preventEnterSubmit}
       className="flex flex-col gap-5 max-w-md w-full"
     >
       <Field label="Nombre *">

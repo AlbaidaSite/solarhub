@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sun } from "lucide-react";
+import Ciro from "@/components/ciro/Ciro";
 import LoginForm from "./LoginForm";
 import RegisterRequestForm from "./RegisterRequestForm";
 
@@ -88,11 +88,11 @@ function Divider() {
       className="hidden md:flex absolute inset-y-0 left-1/2 -translate-x-1/2 items-center justify-center"
     >
       <div className="absolute bg-linear-to-b from-transparent via-zinc-700 to-transparent h-full w-px" />
-      <div className="relative w-24 h-24 rounded-full border border-zinc-700 bg-black flex items-center justify-center shadow-[0_0_30px_rgba(99,102,241,0.25)]">
-        <div className="w-16 h-16 rounded-full bg-linear-to-br from-indigo-500/30 to-amber-400/30 border border-indigo-400/40 flex items-center justify-center">
-          <Sun className="text-amber-300" size={28} />
-        </div>
-      </div>
+
+      {/* Ciro encoge con la ventana en vez de dar paso a otra cosa: el ancho
+          real lo decide el propio componente (ver anchoFluido), partiendo de
+          TAMANO_POR_DEFECTO. */}
+      <Ciro className="shrink-0" />
     </div>
   );
 }

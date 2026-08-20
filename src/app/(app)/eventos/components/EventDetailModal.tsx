@@ -1,0 +1,639 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { useDialog, FocusScope } from "react-aria";
+import { ArrowLeft, Bell, BellRing, Check, ChevronLeft, ChevronRight, ExternalLink, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
+import { eventTypeClasses } from "@/lib/eventTypeClasses";
+import { isBirthday, type EventOccurrence, type EventPrice } from "@/types/events";
+import {
+  checkEventEditPermissionAction,
+  deleteEventAction,
+  getEventExtraPhotosAction,
+  getEventPricesAction,
+  toggleEventInterestAction,
+} from "../actions";
+import {
+  formatEventDateOnly,
+  formatEventEndDate,
+  formatEventPrice,
+  formatEventTime,
+  todayInMadrid,
+} from "../lib/formatting";
+import { isPastOccurrence } from "../lib/eventOccurrences";
+
+interface EventDetailModalProps {
+  occurrence: EventOccurrence;
+  // Los eventos del día que se está mirando, en el orden del calendario y
+  // con el propio `occurrence` dentro: es la lista por la que se mueven
+  // las flechas laterales. Sin ella (o con un único evento ese día) no se
+  // pintan las flechas. Ojo: "el día que se está mirando" no siempre es
+  // la fecha de inicio de este evento — uno de varios días se abre desde
+  // cualquiera de sus celdas (ver EventsCalendar.tsx).
+  dayOccurrences?: EventOccurrence[];
+  // Salta a otro evento del mismo día. Lo resuelve el llamante, que es
+  // quien sabe de qué día vino el detalle abierto.
+  onNavigate?: (eventId: number) => void;
+  onClose: () => void;
+  // Presente solo cuando el modal se abrió desde la lista de eventos del
+  // día (móvil): sustituye el cierre por una flecha "volver" — Escape y el
+  // botón hacen lo mismo, vuelven a la lista en vez de cerrar del todo.
+  onBack?: () => void;
+  // Presente cuando el llamante puede refrescar su lista de eventos tras
+  // un borrado (ver EventsCalendar.tsx).
+  onDelete?: () => void;
+  // Notifica al llamante tras alternar el interés, para que actualice su
+  // caché de ocurrencias (misma idea que onDelete) — así el borde del
+  // punto de tipo de evento y el resto de campanas del mismo evento
+  // (listado móvil) se refrescan sin volver a pedir el mes entero.
+  onInterestToggled?: (eventId: number, liked: boolean) => void;
+}
+
+type DeleteStep = null | "confirm1" | "confirm2";
+
+// Flechas de navegación entre eventos del día: van en su propia fila,
+// FUERA de la imagen. Antes iban ancladas a los lados de la imagen, pero
+// cada evento trae una foto con proporciones distintas, así que la altura
+// de la imagen — y con ella el centro vertical donde caían las flechas —
+// cambiaba en cada salto y había que volver a buscarlas. En una fila
+// propia, entre el padding superior fijo del modal y la imagen, caen
+// siempre en el mismo punto de la pantalla.
+const DAY_NAV_ARROW_CLASS =
+  "flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-amber-300";
+
+// Tope de altura de la foto de portada. La imagen intenta ocupar SIEMPRE
+// el ancho completo del modal; solo cuando a ese ancho se pasaría de este
+// alto manda el alto, y el ancho baja en proporción.
+const MAX_PHOTO_HEIGHT_PX = 670;
+
+// Un cumpleaños nunca debe llegar hasta aquí (ver BirthdayPills.tsx y
+// EventListModal.tsx: los cumpleaños no son clicables en ningún sitio).
+// Si ocurre, es un error de programación en el llamante — se avisa fuerte
+// en desarrollo en vez de renderizar un modal vacío. La comprobación va
+// DESPUÉS de todos los hooks (nunca antes de un return condicional: los
+// hooks deben ejecutarse siempre en el mismo orden).
+export default function EventDetailModal({
+  occurrence,
+  dayOccurrences = [],
+  onNavigate,
+  onClose,
+  onBack,
+  onDelete,
+  onInterestToggled,
+}: EventDetailModalProps) {
+  const router = useRouter();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const { dialogProps, titleProps } = useDialog({}, dialogRef);
+
+  const [prices, setPrices] = useState<EventPrice[] | null>(null);
+  const [copied, setCopied] = useState(false);
+  const latestPriceRequestIdRef = useRef<number | null>(null);
+
+  // Fotos extra (event_photo) para el carrusel — la portada ya llega
+  // resuelta en occurrence.imageUrl, sin esperar a esta petición.
+  const [extraPhotos, setExtraPhotos] = useState<string[]>([]);
+  const [activePhotoIdx, setActivePhotoIdx] = useState(0);
+  // Proporción natural (ancho/alto) de cada foto ya cargada, indexada por
+  // URL. Hace falta medirla en JS porque CSS solo no llega: un width:100%
+  // no es un tamaño "auto", así que un max-height que entre en juego
+  // recorta el alto sin tocar el ancho — deformando la foto, o dejando
+  // franjas si se compensa con object-contain. Guardarla por URL, en vez
+  // de resetearla en cada cambio de foto, evita volver a medir lo ya
+  // medido al pasear por el carrusel.
+  const [photoRatios, setPhotoRatios] = useState<Record<string, number>>({});
+  const latestPhotosRequestIdRef = useRef<number | null>(null);
+
+  // Permiso de edición/borrado: dueño del evento o staff. Se distinguen
+  // ambos casos (no un booleano combinado) porque un staff editando/
+  // borrando el evento de OTRO usuario muestra los botones en rojo, para
+  // que no se confunda con "estoy editando mi propio evento".
+  const [permission, setPermission] = useState({ isOwner: false, isStaff: false });
+  const [deleteStep, setDeleteStep] = useState<DeleteStep>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeletePending, startDeleteTransition] = useTransition();
+  const [isInterestPending, startInterestTransition] = useTransition();
+
+  const goBackOrClose = onBack ?? onClose;
+  const canEdit = permission.isOwner || permission.isStaff;
+  const isStaffActingOnOthersEvent = permission.isStaff && !permission.isOwner;
+
+  useEffect(() => {
+    checkEventEditPermissionAction(occurrence.id).then(setPermission);
+  }, [occurrence.id]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (deleteStep !== null) {
+          setDeleteStep(null);
+        } else {
+          goBackOrClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onBack, onClose, deleteStep]);
+
+  useEffect(() => {
+    const main = document.querySelector("main");
+    if (!main) return;
+    const prevOverflow = main.style.overflow;
+    main.style.overflow = "hidden";
+    return () => {
+      main.style.overflow = prevOverflow;
+    };
+  }, []);
+
+  // Deliberadamente NO usa el patrón "let cancelled = false" de cleanup:
+  // en desarrollo, con Strict Mode, este efecto se invoca dos veces al
+  // montar con el MISMO occurrence.id — y en este proyecto, de esas dos
+  // invocaciones solo la PRIMERA llega a resolver de verdad (la segunda
+  // se queda colgada; comprobado con logging manual). Con un flag
+  // `cancelled` por invocación, esa primera respuesta llega marcada como
+  // cancelada (su cleanup ya se disparó) y se descarta — spinner
+  // infinito. Comparando contra el id más reciente en vez de contra un
+  // flag fijo por invocación, la respuesta que sí llegue (sea de la 1ª o
+  // la 2ª) se acepta igual mientras siga siendo la del evento que se
+  // está mostrando.
+  useEffect(() => {
+    latestPriceRequestIdRef.current = occurrence.id;
+    getEventPricesAction(occurrence.id)
+      .then((rows) => {
+        if (latestPriceRequestIdRef.current === occurrence.id) setPrices(rows);
+      })
+      .catch((err) => {
+        // Sin esto, un fallo en la acción deja `prices` en null para
+        // siempre y el spinner nunca se resuelve.
+        console.error("EventDetailModal: fallo al cargar los precios del evento", err);
+        if (latestPriceRequestIdRef.current === occurrence.id) setPrices([]);
+      });
+  }, [occurrence.id]);
+
+  useEffect(() => {
+    setActivePhotoIdx(0);
+    latestPhotosRequestIdRef.current = occurrence.id;
+    getEventExtraPhotosAction(occurrence.id)
+      .then((rows) => {
+        if (latestPhotosRequestIdRef.current === occurrence.id) setExtraPhotos(rows);
+      })
+      .catch((err) => {
+        console.error("EventDetailModal: fallo al cargar las fotos adicionales del evento", err);
+        if (latestPhotosRequestIdRef.current === occurrence.id) setExtraPhotos([]);
+      });
+  }, [occurrence.id]);
+
+  if (isBirthday(occurrence)) {
+    console.error(
+      "EventDetailModal: se intentó abrir el detalle de un cumpleaños; los cumpleaños no tienen modal de detalle.",
+      occurrence,
+    );
+    return null;
+  }
+
+  // Portada + fotos extra, en orden — la portada siempre va primera.
+  const allPhotos = occurrence.imageUrl ? [occurrence.imageUrl, ...extraPhotos] : extraPhotos;
+  const activePhotoUrl = allPhotos[activePhotoIdx] ?? occurrence.imageUrl ?? null;
+
+  const activePhotoRatio = activePhotoUrl ? photoRatios[activePhotoUrl] ?? null : null;
+
+  // naturalWidth/naturalHeight valen 0 si la carga falló: sin el guardia
+  // se guardaría un 0 (o un NaN) como proporción y la imagen se quedaría
+  // sin ancho.
+  const handlePhotoLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth, naturalHeight } = e.currentTarget;
+    if (!naturalWidth || !naturalHeight) return;
+    const url = activePhotoUrl;
+    if (!url) return;
+    setPhotoRatios((prev) =>
+      prev[url] != null ? prev : { ...prev, [url]: naturalWidth / naturalHeight },
+    );
+  };
+
+  const classes = eventTypeClasses(occurrence.eventType.color);
+  const dateLabel = formatEventDateOnly(occurrence.occurrenceDate);
+  const timeLabel = formatEventTime(occurrence.eventDate, occurrence.startTimeIncluded);
+  const endDateLabel = formatEventEndDate(occurrence.endDate, occurrence.endTimeIncluded);
+
+  const handleShare = async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("evento", String(occurrence.id));
+    url.searchParams.set("fecha", occurrence.occurrenceDate);
+    await navigator.clipboard.writeText(url.toString());
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDelete = () => {
+    startDeleteTransition(async () => {
+      setDeleteError(null);
+      const result = await deleteEventAction(occurrence.id);
+      if (result.ok) {
+        onDelete?.();
+      } else {
+        setDeleteError(result.error);
+        setDeleteStep(null);
+      }
+    });
+  };
+
+  // Optimista, al estilo "like" de Instagram: la campana cambia al
+  // instante (vía onInterestToggled, que actualiza la caché de meses de
+  // EventsCalendar.tsx) y solo se deshace si la petición termina
+  // fallando — así se siente al momento aunque el servidor tarde.
+  const handleToggleInterest = () => {
+    const nextLiked = !occurrence.liked;
+    onInterestToggled?.(occurrence.id, nextLiked);
+    startInterestTransition(async () => {
+      const result = await toggleEventInterestAction(occurrence.id);
+      if (result.ok) {
+        if (result.liked !== nextLiked) onInterestToggled?.(occurrence.id, result.liked);
+      } else {
+        onInterestToggled?.(occurrence.id, !nextLiked);
+        console.error("EventDetailModal: fallo al alternar el interés", result.error);
+      }
+    });
+  };
+
+  // Un evento que ya pasó no admite interés (lo rechaza también
+  // toggleEventInterestAction): en vez de una campana que no responde, no
+  // hay campana. Los cumpleaños no entran aquí, se repiten cada año.
+  const isPast = isPastOccurrence(occurrence, todayInMadrid());
+
+  // Flechas para saltar entre los eventos del MISMO día, una a cada lado
+  // de la imagen. Dan la vuelta en los dos sentidos: desde el último, la
+  // siguiente lleva al primero. No compiten con el carrusel de fotos del
+  // propio evento, que se maneja con las miniaturas de debajo.
+  const dayIndex = dayOccurrences.findIndex((o) => o.id === occurrence.id);
+  const canNavigateDay = onNavigate != null && dayOccurrences.length > 1 && dayIndex >= 0;
+
+  const goToDaySibling = (offset: number) => {
+    // El módulo se aplica sobre la suma con la longitud porque en JS el
+    // resto de un negativo es negativo (-1 % 3 === -1): sin ese ajuste,
+    // retroceder desde el primero daría un índice fuera de rango.
+    const next = (dayIndex + offset + dayOccurrences.length) % dayOccurrences.length;
+    onNavigate?.(dayOccurrences[next].id);
+  };
+
+  const dayNavArrows = canNavigateDay ? (
+    <div className="flex shrink-0 items-center justify-between gap-3">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          goToDaySibling(-1);
+        }}
+        aria-label="Evento anterior de este día"
+        title="Evento anterior de este día"
+        className={DAY_NAV_ARROW_CLASS}
+      >
+        <ChevronLeft size={24} />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          goToDaySibling(1);
+        }}
+        aria-label="Evento siguiente de este día"
+        title="Evento siguiente de este día"
+        className={DAY_NAV_ARROW_CLASS}
+      >
+        <ChevronRight size={24} />
+      </button>
+    </div>
+  ) : null;
+
+  // Mostrar interés — cualquier autenticado, sin relación con canEdit.
+  // Ya no es un icono suelto flotando sobre la imagen, sino un recuadro
+  // rotulado ("Recordar" + campana) al final de la línea de la fecha de
+  // inicio: ahí se lee qué hace sin tener que deducirlo del icono, y no
+  // depende de las proporciones de la foto. En ámbar cuando el interés ya
+  // está marcado, y ahí la campana suena (BellRing).
+  const interestButton = isPast ? null : (
+    <button
+      type="button"
+      onClick={handleToggleInterest}
+      disabled={isInterestPending}
+      aria-label={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
+      aria-pressed={occurrence.liked}
+      title={occurrence.liked ? "Quitar interés" : "Mostrar interés"}
+      className={`inline-flex shrink-0 items-center gap-2 rounded-xl border px-4 py-2 text-base font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
+        occurrence.liked
+          ? "border-amber-300/60 bg-amber-300/15 text-amber-200 hover:bg-amber-300/25"
+          : "border-white/20 bg-white/5 text-white/80 hover:border-white/40 hover:text-white"
+      }`}
+    >
+      Recordar
+      {occurrence.liked ? <BellRing size={20} /> : <Bell size={20} />}
+    </button>
+  );
+
+  // Editar / eliminar — solo dueño del evento o staff. Ancladas a la
+  // esquina superior derecha de la IMAGEN (no del modal), con círculo
+  // negro detrás de cada icono para distinguirse de cualquier fondo. En
+  // rojo cuando quien edita es staff pero NO el dueño, para no
+  // confundirlo con "es mi evento".
+  const editDeleteButtons = canEdit ? (
+    <div
+      className="absolute top-3 right-3 z-10 flex items-center gap-2"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={() => router.push(`/eventos/editar/${occurrence.id}`)}
+        aria-label="Editar evento"
+        title={isStaffActingOnOthersEvent ? "Editar (evento de otro usuario)" : "Editar"}
+        className={`w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors cursor-pointer ${
+          isStaffActingOnOthersEvent ? "text-red-400 hover:text-red-300" : "text-white/80 hover:text-amber-300"
+        }`}
+      >
+        <Pencil size={18} />
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setDeleteError(null);
+          setDeleteStep("confirm1");
+        }}
+        aria-label="Eliminar evento"
+        title={isStaffActingOnOthersEvent ? "Eliminar (evento de otro usuario)" : "Eliminar"}
+        className={`w-9 h-9 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center transition-colors cursor-pointer ${
+          isStaffActingOnOthersEvent ? "text-red-400 hover:text-red-300" : "text-white/80 hover:text-red-400"
+        }`}
+      >
+        <Trash2 size={18} />
+      </button>
+    </div>
+  ) : null;
+
+  return (
+    <div
+      className="fixed inset-0 z-40 bg-black/87 backdrop-blur-md overflow-y-auto scrollbar-clean"
+      onClick={goBackOrClose}
+    >
+      <FocusScope contain restoreFocus autoFocus>
+        <div
+          {...dialogProps}
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-detail-title"
+          className="min-h-full w-full max-w-2xl mx-auto flex flex-col gap-5 px-6 pt-32 pb-8"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Cierre / volver — mismo tratamiento que PinModal.tsx */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              goBackOrClose();
+            }}
+            aria-label={onBack ? "Volver a la lista" : "Cerrar"}
+            className="fixed top-6 left-6 z-10 p-2 rounded-full text-red-300/70 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
+          >
+            {onBack ? <ArrowLeft size={35} /> : <X size={35} />}
+          </button>
+
+          {/* Confirmación de borrado en dos pasos — mismo patrón que
+              PinModal.tsx. */}
+          {deleteStep !== null && (
+            <div
+              className="fixed inset-0 z-20 flex items-center justify-center bg-black/60"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-zinc-900 border border-white/15 rounded-2xl p-6 w-80 flex flex-col gap-5 shadow-2xl mx-4">
+                <p className="text-white font-semibold">
+                  {deleteStep === "confirm1"
+                    ? "¿Eliminar este evento?"
+                    : "Esta acción no se puede deshacer."}
+                </p>
+                {deleteStep === "confirm2" && (
+                  <p className="text-white/50 text-sm -mt-2">
+                    Se borrarán también sus precios y fotos asociadas.
+                  </p>
+                )}
+                {deleteError && <p className="text-red-400 text-sm">{deleteError}</p>}
+                <div className="flex gap-3">
+                  {deleteStep === "confirm1" ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteStep("confirm2")}
+                        className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition-colors cursor-pointer"
+                      >
+                        Sí, eliminar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteStep(null)}
+                        className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-colors cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteStep(null)}
+                        disabled={isDeletePending}
+                        className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={isDeletePending}
+                        className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {isDeletePending ? "Eliminando…" : "Confirmar"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Navegación entre los eventos del día: fila propia y fija,
+              antes de la imagen, para que no se mueva de sitio por mucho
+              que cambie el alto de la foto de cada evento. */}
+          {dayNavArrows}
+
+          {/* Imagen o tesela de tipo. La foto ocupa todo el ancho del
+              modal salvo que a ese ancho fuese a pasar de
+              MAX_PHOTO_HEIGHT_PX de alto: entonces manda el alto y el
+              ancho baja en proporción (nunca se deforma ni se recorta).
+              Editar/eliminar van anclados a la esquina superior derecha
+              de la IMAGEN, no del modal. */}
+          <div className="w-full flex justify-center shrink-0">
+            {activePhotoUrl ? (
+              <div
+                className="relative w-full"
+                style={
+                  activePhotoRatio != null
+                    ? { maxWidth: `${MAX_PHOTO_HEIGHT_PX * activePhotoRatio}px` }
+                    : undefined
+                }
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- next/image "fill" exige un contenedor con tamaño ya fijado, justo lo contrario de lo que hace falta aquí. */}
+                <img
+                  src={activePhotoUrl}
+                  alt={occurrence.title}
+                  onLoad={handlePhotoLoad}
+                  className="w-full h-auto max-h-[670px] rounded-xl border border-white/10 object-contain bg-zinc-900"
+                />
+                {editDeleteButtons}
+              </div>
+            ) : (
+              <div
+                className={`relative w-full aspect-video bg-zinc-900 rounded-xl overflow-hidden border border-white/10 flex items-center justify-center gap-3 ${classes.dot}`}
+              >
+                <div className="relative h-16 w-16 shrink-0">
+                  <Image
+                    src={occurrence.eventType.icon_path}
+                    alt=""
+                    fill
+                    sizes="64px"
+                    className="object-contain"
+                    unoptimized
+                  />
+                </div>
+                {editDeleteButtons}
+              </div>
+            )}
+          </div>
+
+          {/* Carrusel de miniaturas: solo con más de una foto (portada +
+              extra) — mismo tratamiento visual que el carrusel de
+              PinModal.tsx. */}
+          {allPhotos.length > 1 && (
+            <div className="flex flex-wrap gap-2 scrollbar-clean pb-1">
+              {allPhotos.map((photoUrl, idx) => (
+                <button
+                  key={`${photoUrl}-${idx}`}
+                  type="button"
+                  onClick={() => setActivePhotoIdx(idx)}
+                  aria-label={`Ver foto ${idx + 1}`}
+                  className={`relative shrink-0 w-15 h-10 rounded-lg overflow-hidden border-2 transition-all cursor-pointer bg-zinc-900 ${
+                    idx === activePhotoIdx
+                      ? "border-amber-300"
+                      : "border-white/10 hover:border-white/30"
+                  }`}
+                >
+                  <Image src={photoUrl} alt="" fill sizes="80px" className="object-cover" unoptimized />
+                </button>
+              ))}
+            </div>
+          )}
+
+          <h1 {...titleProps} id="event-detail-title" className="text-4xl font-bold text-white">
+            {occurrence.title}
+          </h1>
+
+          <div className="flex flex-col gap-1 text-white">
+            {/* Hora en su propio span con margen izquierdo (no solo un
+                espacio suelto en el string): separación visual real
+                respecto a la fecha, más grande que antes. El recuadro de
+                "Recordar" comparte línea con la fecha de inicio, pegado
+                al extremo derecho. */}
+            <div className="flex items-center justify-between gap-4">
+              <p className="flex min-w-0 flex-wrap items-baseline text-2xl font-semibold">
+                <span>{dateLabel}</span>
+                {timeLabel && <span className="ml-4 text-lg font-normal text-white/70">{timeLabel}</span>}
+              </p>
+              {interestButton}
+            </div>
+            {endDateLabel && <p className="text-sm text-white/60">Hasta: {endDateLabel}</p>}
+          </div>
+
+          {occurrence.place && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs uppercase tracking-wider text-white/50">Lugar</span>
+              <p className="text-base text-white">{occurrence.place}</p>
+            </div>
+          )}
+
+          {occurrence.description && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs uppercase tracking-wider text-white/50">Información</span>
+              <p className="text-base text-white whitespace-pre-line">{occurrence.description}</p>
+            </div>
+          )}
+
+          {occurrence.url && (
+            <a
+              href={occurrence.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 self-start px-6 py-3 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/40 text-blue-300 text-base font-semibold transition-colors"
+            >
+              <ExternalLink size={20} />
+              Más información
+            </a>
+          )}
+
+          {/* Precio: nada mientras carga (prices === null) — sin spinner
+              ni cabecera "Precio" de por medio, así un evento sin precio
+              nunca muestra este bloque ni siquiera un instante. Solo
+              aparece si la carga termina y SÍ hay filas. */}
+          {prices !== null && prices.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs uppercase tracking-wider text-white/50">Precio</span>
+              <ul className="flex flex-col gap-1">
+                {prices.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-4 text-white">
+                    <span className="text-base text-white/80">{p.reason ?? "Entrada"}</span>
+                    <span className="text-lg font-semibold">{formatEventPrice(p.price)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Distintivos de tipo/cromo + compartir: última fila, con el
+              icono de compartir fijado al extremo derecho de la misma
+              fila (ya no flotante sobre la imagen). */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium text-white ${classes.badgeBg} ${classes.badgeBorder}`}
+              >
+                <span className="relative h-4 w-4 shrink-0">
+                  <Image src={occurrence.eventType.icon_path} alt="" fill sizes="16px" className="object-contain" unoptimized />
+                </span>
+                {occurrence.eventType.name}
+              </span>
+              {occurrence.includesCromo && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-300/15 px-3 py-1 text-sm font-medium text-amber-200">
+                  <Sparkles size={14} /> Incluye cromo
+                </span>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              {copied && (
+                <span className="flex items-center gap-1 text-sm text-amber-300">
+                  <Check size={16} /> Enlace copiado
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleShare}
+                aria-label="Copiar enlace del evento"
+                title="Compartir"
+                className="p-2 rounded-full text-white/60 hover:text-amber-300 hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                <Share2 size={22} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </FocusScope>
+    </div>
+  );
+}

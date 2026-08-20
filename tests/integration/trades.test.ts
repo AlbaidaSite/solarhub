@@ -27,6 +27,7 @@ import {
 import {
   acceptTradeAction,
   unacceptTradeAction,
+  getUserOwnedCromosForTradeAction,
 } from "@/app/(app)/intercambios/[id]/actions";
 
 beforeEach(() => {
@@ -125,6 +126,102 @@ describe("RF-017 · añadir copia a la oferta propia (RN-016)", () => {
   });
 });
 
+describe("RF-017 · lista de cromos propios para añadir a la oferta", () => {
+  // El stub resuelve por tabla en orden de llamada. La action lanza tres
+  // consultas en paralelo, en este orden: uniques ya en ESTA oferta,
+  // uniques comprometidos en OTRO trade abierto, y los uniques que el
+  // usuario posee ahora mismo.
+  function stubList(opts: {
+    alreadyInOffer: Array<{ unique_id: number }>;
+    committedElsewhere: Array<{ unique_id: number }>;
+    owned: unknown[];
+  }) {
+    const stub = createSupabaseStub({
+      authUserId: "u-A",
+      from: {
+        trade_unique: {
+          default: { data: [], error: null },
+          queue: [
+            { data: opts.alreadyInOffer, error: null },
+            { data: opts.committedElsewhere, error: null },
+          ],
+        },
+        unique_ownership: { data: opts.owned, error: null },
+      },
+    });
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(stub.client as never);
+    return stub;
+  }
+
+  function ownedRow(uniqueId: number, copyNumber: number, cromoId: number, name: string) {
+    return {
+      unique_cromo: {
+        id: uniqueId,
+        copy_number: copyNumber,
+        cromo: { id: cromoId, name, front_img: `${name}.webp` },
+      },
+    };
+  }
+
+  const owned = [
+    ownedRow(11, 2, 1, "Alfa"),
+    ownedRow(10, 1, 1, "Alfa"),
+    ownedRow(20, 1, 2, "Bravo"),
+    ownedRow(30, 1, 3, "Delta"),
+    ownedRow(40, 1, 4, "Ceta"),
+  ];
+
+  it("marca inTrade las copias comprometidas en otro intercambio abierto", async () => {
+    stubList({
+      alreadyInOffer: [],
+      committedElsewhere: [{ unique_id: 11 }, { unique_id: 20 }],
+      owned,
+    });
+
+    const list = await getUserOwnedCromosForTradeAction(9);
+    const alfa = list.find((c) => c.cromoId === 1)!;
+    expect(alfa.uniques).toEqual([
+      { uniqueId: 10, copyNumber: 1, inTrade: false },
+      { uniqueId: 11, copyNumber: 2, inTrade: true },
+    ]);
+  });
+
+  it("los cromos sin ninguna copia libre bajan al fondo; el resto sigue alfabético", async () => {
+    stubList({
+      alreadyInOffer: [],
+      committedElsewhere: [{ unique_id: 11 }, { unique_id: 20 }],
+      owned,
+    });
+
+    const list = await getUserOwnedCromosForTradeAction(9);
+    // Bravo tiene su única copia comprometida → al fondo. Alfa conserva la
+    // copia #1 libre, así que se comporta como siempre.
+    expect(list.map((c) => c.cromoName)).toEqual(["Alfa", "Ceta", "Delta", "Bravo"]);
+  });
+
+  it("excluye las copias que ya están en esta oferta", async () => {
+    stubList({
+      alreadyInOffer: [{ unique_id: 40 }],
+      committedElsewhere: [],
+      owned,
+    });
+
+    const list = await getUserOwnedCromosForTradeAction(9);
+    expect(list.map((c) => c.cromoName)).toEqual(["Alfa", "Bravo", "Delta"]);
+  });
+
+  it("la consulta de comprometidos excluye la oferta actual y los trades cerrados", async () => {
+    const { calls } = stubList({ alreadyInOffer: [], committedElsewhere: [], owned: [] });
+
+    await getUserOwnedCromosForTradeAction(9);
+
+    const committedCall = calls.from.filter((c) => c.table === "trade_unique")[1];
+    expect(committedCall.args).toContainEqual(["trade_offer.trade.is_mutual_agreement", false]);
+    expect(committedCall.args).toContainEqual(["trade_offer_id", 9]);
+    expect(committedCall.chain).toContain("neq");
+  });
+});
+
 describe("RF-019 · aceptar / desaceptar oferta", () => {
   it("aceptar: pasa is_accepted=true para la oferta del usuario en el trade", async () => {
     const { client, calls } = createSupabaseStub({
@@ -158,38 +255,65 @@ describe("RF-019 · aceptar / desaceptar oferta", () => {
 });
 
 describe("RF-021 · cancelar intercambio", () => {
-  it("verifica participación y borra el trade", async () => {
-    // Lookup encuentra el trade (usuario es parte); luego delete.
-    const fromImpl = vi.fn((table: string) => {
+  // La primera llamada a from() es la búsqueda del trade; la segunda, el
+  // delete. El delete devuelve las filas borradas (.select("id")), que es
+  // lo único que distingue un borrado real de uno que RLS ha dejado en nada.
+  function stubTrade(deleteResult: unknown, tradeRow: unknown) {
+    const fromImpl = vi.fn(() => {
       const chain: Record<string, unknown> = {};
-      for (const m of [
-        "select",
-        "eq",
-        "or",
-        "delete",
-        "limit",
-      ] as const) {
+      for (const m of ["select", "eq", "or", "delete", "limit"] as const) {
         chain[m] = () => chain;
       }
       chain.maybeSingle = () => chain;
-      chain.then = (onF: (v: unknown) => unknown) => {
-        // Primera llamada (lookup) devuelve el trade.
-        // Las siguientes (delete) devuelven null sin error.
-        return Promise.resolve(
-          fromImpl.mock.calls.length === 1
-            ? { data: { id: 7 }, error: null }
-            : { data: null, error: null },
+      chain.then = (onF: (v: unknown) => unknown) =>
+        Promise.resolve(
+          fromImpl.mock.calls.length === 1 ? { data: tradeRow, error: null } : deleteResult,
         ).then(onF);
-      };
-      void table;
       return chain;
     });
-    const stub = createSupabaseStub({ authUserId: "u-A" });
+    return fromImpl;
+  }
+
+  const ownTrade = { id: 7, initiator_id: "u-A", recipient_id: "u-B" };
+  const otherTrade = { id: 7, initiator_id: "u-X", recipient_id: "u-Y" };
+
+  function mountStub(fromImpl: unknown, rpc?: Record<string, { data: unknown; error: null }>) {
+    const stub = createSupabaseStub({ authUserId: "u-A", rpc });
     stub.client.from = fromImpl as never;
     vi.mocked(createSupabaseServerClient).mockResolvedValue(stub.client as never);
+  }
 
+  it("un participante borra el trade", async () => {
+    mountStub(stubTrade({ data: [{ id: 7 }], error: null }, ownTrade));
     const result = await cancelTradeAction(7);
     expect(result.ok).toBe(true);
+  });
+
+  // El bug: sin política de DELETE en trade, Postgres no borra nada y
+  // TAMPOCO da error, así que la action cantaba victoria, la lista quitaba
+  // el intercambio y al recargar seguía allí.
+  it("si no se borra ninguna fila, lo dice en vez de dar el borrado por bueno", async () => {
+    mountStub(stubTrade({ data: [], error: null }, ownTrade));
+    const result = await cancelTradeAction(7);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("No se ha podido eliminar");
+  });
+
+  it("staff puede borrar un intercambio ajeno", async () => {
+    mountStub(stubTrade({ data: [{ id: 7 }], error: null }, otherTrade), {
+      is_staff: { data: true, error: null },
+    });
+    const result = await cancelTradeAction(7);
+    expect(result.ok).toBe(true);
+  });
+
+  it("un tercero sin permisos no puede borrarlo", async () => {
+    mountStub(stubTrade({ data: [{ id: 7 }], error: null }, otherTrade), {
+      is_staff: { data: false, error: null },
+    });
+    const result = await cancelTradeAction(7);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Sin permiso");
   });
 });
 

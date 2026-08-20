@@ -58,6 +58,12 @@ export default function CromoCard({ cromo, onClick }: CromoCardProps) {
 
   const displayThumb  = cromo.isImageLocked ? LOCKED_URL : cromo.front_thumb;
   const isGrayscale   = cromo.ownershipState !== "owned" && !cromo.isImageLocked;
+  // El gris de un cromo que no se tiene es un filtro CSS sobre la imagen
+  // DE VERDAD, así que arrastrarla fuera o abrirla con el botón derecho la
+  // enseñaba a todo color. Se le quitan los dos gestos. Ojo: esto tapa el
+  // atajo, no la imagen — la URL sigue en la red y en el inspector; para
+  // cerrarlo del todo habría que servir una versión ya en gris.
+  const isProtected   = cromo.ownershipState !== "owned";
   const showHowToOverlay = cromo.ownershipState === "never_owned" && cromo.how_to;
 
   return (
@@ -77,6 +83,8 @@ export default function CromoCard({ cromo, onClick }: CromoCardProps) {
           className={`object-cover scale-[1.1] transition-opacity duration-300${isGrayscale ? " grayscale" : ""}`}
           placeholder="blur"
           blurDataURL={GENERIC_BLUR_DATA_URL}
+          draggable={!isProtected}
+          onContextMenu={isProtected ? (e) => e.preventDefault() : undefined}
         />
 
         {showHowToOverlay && (

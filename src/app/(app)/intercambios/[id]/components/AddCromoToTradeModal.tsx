@@ -124,13 +124,17 @@ export default function AddCromoToTradeModal({
                       key={u.uniqueId}
                       type="button"
                       onClick={() => setSelected({ cromo: c, uniqueId: u.uniqueId })}
-                      className={`px-2.5 py-0.5 rounded text-xs font-semibold border transition-colors cursor-pointer ${
-                        isSelected
-                          ? "bg-amber-300/20 border-amber-300/60 text-amber-200"
-                          : "bg-white/5 border-white/15 text-white/70 hover:bg-white/10"
+                      disabled={u.inTrade}
+                      title={u.inTrade ? "Esta copia ya está en un intercambio" : undefined}
+                      className={`px-2.5 py-0.5 rounded text-xs font-semibold border transition-colors ${
+                        u.inTrade
+                          ? "bg-white/5 border-white/10 text-white/30 line-through cursor-not-allowed"
+                          : isSelected
+                            ? "bg-amber-300/20 border-amber-300/60 text-amber-200 cursor-pointer"
+                            : "bg-white/5 border-white/15 text-white/70 hover:bg-white/10 cursor-pointer"
                       }`}
                     >
-                      Copia #{u.copyNumber}
+                      #{u.copyNumber}
                     </button>
                   );
                 })}

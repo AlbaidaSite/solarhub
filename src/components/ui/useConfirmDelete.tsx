@@ -8,6 +8,14 @@ type DeleteResult = { ok: true } | { ok: false; error: string };
 interface UseConfirmDeleteOpts<Id extends number | string> {
   // Texto inyectado en "¿Estás seguro de que quieres eliminar este {itemLabel}?".
   itemLabel: string;
+  // Acción de la pregunta, por si no es "eliminar" el elemento: vaciar un
+  // bancal borra sus cultivos, pero no el bancal, y decirlo mal en una
+  // confirmación destructiva es exactamente lo que no puede pasar.
+  verb?: string;
+  // Concordancia de género del demostrativo con itemLabel: "este cultivo",
+  // pero "esta entrada del diario". Por defecto masculino, que es lo que
+  // pide la mayoría de listas de la app.
+  demonstrative?: "este" | "esta";
   action: (id: Id) => Promise<DeleteResult>;
   onSuccess: (id: Id) => void;
 }
@@ -18,10 +26,16 @@ interface UseConfirmDeleteReturn<Id extends number | string> {
 }
 
 // Hook que encapsula la máquina de estado del borrado en 2 pasos, idéntica
-// entre las listas admin (cromos, artistas, stickers…). El consumidor solo
-// invoca `openDelete(id)` y renderiza `dialog` al final de su JSX.
+// entre las listas admin (cromos, artistas, stickers…) y el modal de bancal
+// del huerto. El consumidor solo invoca `openDelete(id)` y renderiza `dialog`
+// al final de su JSX.
+//
+// Vive en components/ui y no bajo app/staff porque ya no es solo de staff: el
+// borrado en 2 pasos es el gesto estándar de toda la app.
 export function useConfirmDelete<Id extends number | string>({
   itemLabel,
+  verb = "eliminar",
+  demonstrative = "este",
   action,
   onSuccess,
 }: UseConfirmDeleteOpts<Id>): UseConfirmDeleteReturn<Id> {
@@ -58,7 +72,7 @@ export function useConfirmDelete<Id extends number | string>({
   const dialog = state ? (
     <ConfirmDialog
       step={state.step}
-      step1Message={`¿Estás seguro de que quieres eliminar este ${itemLabel}?`}
+      step1Message={`¿Estás seguro de que quieres ${verb} ${demonstrative} ${itemLabel}?`}
       step2Message="Esta acción no se puede deshacer. ¿Confirmar eliminación?"
       confirmLabel="Sí, estoy seguro"
       pendingLabel="Eliminando…"

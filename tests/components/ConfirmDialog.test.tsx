@@ -9,7 +9,7 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ConfirmDialog from "@/app/staff/components/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 beforeEach(() => cleanup());
 

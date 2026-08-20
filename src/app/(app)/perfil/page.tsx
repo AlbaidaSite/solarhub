@@ -5,9 +5,10 @@ import { LogOut, Pencil, UserCog } from "lucide-react";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getStorageUrl, DEFAULT_AVATAR_PATH } from "@/lib/supabase/storage";
+import { getUpcomingLikedEventsAction } from "@/app/(app)/eventos/actions";
 import ProfilePanels from "./components/ProfilePanels";
 import ProfileAvatar from "./components/ProfileAvatar";
-import { logoutAction } from "./actions";
+import { getProfileHistoryAction, logoutAction } from "./actions";
 
 export const metadata: Metadata = {
   title: "SolarHub - Perfil",
@@ -24,13 +25,15 @@ export default async function PerfilPage() {
     redirect("/login");
   }
 
-  const [profileRes, isStaffRes] = await Promise.all([
+  const [profileRes, isStaffRes, upcomingEvents, history] = await Promise.all([
     supabase
       .from("profile")
       .select("username, name, profile_img")
       .eq("id", user.id)
       .single(),
     supabase.rpc("is_staff"),
+    getUpcomingLikedEventsAction(),
+    getProfileHistoryAction(),
   ]);
   const profile = profileRes.data;
   const isStaff = Boolean(isStaffRes.data);
@@ -81,7 +84,7 @@ export default async function PerfilPage() {
         </h1>
       </header>
 
-      <ProfilePanels />
+      <ProfilePanels upcomingEvents={upcomingEvents} history={history} />
     </div>
   );
 }

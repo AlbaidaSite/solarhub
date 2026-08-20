@@ -237,33 +237,37 @@ function OfferColumn({
     <div className="rounded-xl border border-white/15 bg-black/30 flex flex-col">
       {/* Cabecera */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-        <h2 className="text-sm font-bold text-white/80 uppercase tracking-wide">{title}</h2>
+        <h2 className="text-sm lg:text-base font-bold text-white/80 uppercase tracking-wide">
+          {title}
+        </h2>
         {isAcceptedDisplay ? (
-          <span className="text-xs font-semibold text-emerald-400">✓ Aceptado</span>
+          <span className="text-xs lg:text-sm font-semibold text-emerald-400">✓ Aceptado</span>
         ) : (
-          <span className="text-xs text-white/40">Pendiente</span>
+          <span className="text-xs lg:text-sm text-white/40">Pendiente</span>
         )}
       </div>
 
       {/* Lista de uniques */}
-      <div className="flex-1 divide-y divide-white/10 min-h-30">
+      <div className="flex-1 divide-y divide-white/10 min-h-30 lg:min-h-64">
         {offer.uniques.length === 0 && (
-          <p className="px-4 py-6 text-center text-white/40 text-sm">Sin cromos añadidos.</p>
+          <p className="px-4 py-6 lg:py-10 text-center text-white/40 text-sm lg:text-base">
+            Sin cromos añadidos.
+          </p>
         )}
         {offer.uniques.map((u) => (
-          <div key={u.uniqueId} className="flex items-center gap-3 px-4 py-2">
-            <div className="relative w-8 h-8 shrink-0 rounded overflow-hidden bg-zinc-800">
+          <div key={u.uniqueId} className="flex items-center gap-3 px-4 py-2 lg:gap-4 lg:px-5 lg:py-3">
+            <div className="relative w-8 h-8 lg:w-14 lg:h-14 shrink-0 rounded lg:rounded-lg overflow-hidden bg-zinc-800">
               <Image
                 src={u.thumbUrl ?? LOCKED_THUMB}
                 alt={u.cromoName}
                 fill
-                sizes="32px"
+                sizes="(max-width: 1024px) 32px, 56px"
                 className="object-cover"
               />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white text-xs font-medium truncate">{u.cromoName}</p>
-              <p className="text-white/50 text-xs">Copia #{u.copyNumber}</p>
+              <p className="text-white text-xs lg:text-base font-medium truncate">{u.cromoName}</p>
+              <p className="text-white/50 text-xs lg:text-sm">Copia #{u.copyNumber}</p>
             </div>
             {isMine && !isCompleted && (
               <button

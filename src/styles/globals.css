@@ -1,10 +1,103 @@
 @import "tailwindcss";
 
+/* Contenedor de Ciro (src/components/ciro/Ciro.tsx). `container-type` es lo
+   que da sentido a los `cqw` con los que el componente mide TODAS sus
+   piezas: 1cqw = 1% del lado. Como el lado lo fija --ciro-lado (un min() de
+   px y unidades de ventana), el conjunto encoge solo cuando la ventana se
+   queda pequeña, sin JS y sin recalcular pieza por pieza. */
+.ciro-raiz {
+  width: var(--ciro-lado, 340px);
+  aspect-ratio: 1;
+  container-type: inline-size;
+}
+
+/* Latido de las llamas de Ciro (src/components/ciro/Ciro.tsx). El span de
+   latido vive DENTRO del de órbita, así que hereda su rotate: un
+   translateY plano aquí ya es radial para cada llama, sin trigonometría.
+   Amplitud y duración se heredan del contenedor de Ciro, iguales para las
+   ocho llamas y sin delay: laten todas a la vez. */
+@keyframes ciro-latido {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-1 * var(--ciro-amp, 6px)));
+  }
+}
+
+/* La curva NO es ease-in-out: esa llega al extremo con velocidad 0 (sus dos
+   puntos de control se apoyan en 0 y en 1), y con `alternate` eso encadena
+   una frenada con un arranque justo en el punto de giro — las llamas parecen
+   quedarse paradas ahí. Esta bezier mantiene velocidad en los extremos
+   (y1 = 0.2, y2 = 0.8, pendiente 0.5 a ambos lados) y suaviza el centro, así
+   que el cambio de sentido es rápido sin que el vaivén se vuelva mecánico. */
+.ciro-latido {
+  animation: ciro-latido var(--ciro-dur, 2.4s) cubic-bezier(0.4, 0.2, 0.6, 0.8) infinite
+    alternate;
+}
+
+/* Las llamas cortas van en contrafase: el mismo ciclo, pero arrancando por
+   el extremo contrario, así que se alejan justo cuando las largas se
+   acercan. Tiene que ir DESPUÉS de .ciro-latido — misma especificidad, gana
+   el orden — porque el atajo `animation` de arriba resetea `direction`. */
+.ciro-latido-contra {
+  animation-direction: alternate-reverse;
+}
+
+/* Fogonazo: al hacer clic en Ciro las ocho llamas dan un tirón hacia fuera y
+   vuelven. Va sobre la propiedad `translate` del <img>, no sobre `transform`,
+   por dos motivos: `translate` se aplica ANTES que el `rotate` con el que
+   cada asset corrige su orientación (así el tirón sale radial y no en el eje
+   girado del dibujo), y al ser una propiedad distinta no pisa el latido del
+   <span> padre, que sigue corriendo por debajo. */
+@keyframes ciro-fogonazo {
+  0% {
+    translate: 0 0;
+  }
+  35% {
+    translate: 0 calc(-1 * var(--ciro-fog-amp, 20px));
+  }
+  100% {
+    translate: 0 0;
+  }
+}
+
+.ciro-fogonazo .ciro-llama {
+  animation: ciro-fogonazo var(--ciro-fog-dur, 0.55s) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ciro-latido,
+  .ciro-fogonazo .ciro-llama {
+    animation: none;
+  }
+}
+
 @theme {
   /* Breakpoint propio para la transición navbar-desktop ↔ menú móvil.
      Más bajo que `md` (650px) porque el navbar cabe holgado a partir de 700px. */
   --breakpoint-nav: 650px;
 }
+
+/* COLORES GUARDADOS EN BD: event_type.color (calendario) y plant.color
+   (huerto) guardan un nombre de clase Tailwind completo (matiz + tono, ej.
+   "amber-400"), compuesto en tiempo de ejecución — event_type por
+   src/lib/eventTypeClasses.ts. Tailwind 4 escanea el fuente en build time,
+   así que `bg-${color}` no genera nada por sí solo — hay que forzar la
+   generación de TODA la superficie matiz×tono posible aquí.
+   No hay CHECK en BD que limite los valores (ver migraciones
+   20260808120300_event_type_color_format.sql y 20260812160000_plant_color.sql),
+   así que esta lista cubre los 17 matices cromáticos de Tailwind (los grises
+   —slate, gray, zinc, neutral, stone— quedan fuera a propósito, salvo el
+   zinc-400 de fallback de abajo). Si Tailwind cambia su escala de tonos, esta
+   lista debe actualizarse junto con las filas de event_type y plant en
+   Supabase. Solo se generan los prefijos declarados aquí (`bg-`, `border-`,
+   `text-`): si algún consumidor pasa a componer `fill-`, `ring-`... hay que
+   añadir ese prefijo. `text-` lo usa el huerto, que pinta cada cultivo dentro
+   del SVG con stroke/fill = currentColor (ver plantColorClasses.ts). */
+@source inline("{bg,border,text}-{red,orange,amber,yellow,lime,green,emerald,teal,cyan,sky,blue,indigo,violet,purple,fuchsia,pink,rose}-{50,100,200,300,400,500,600,700,800,900,950}");
+@source inline("bg-{red,orange,amber,yellow,lime,green,emerald,teal,cyan,sky,blue,indigo,violet,purple,fuchsia,pink,rose}-{50,100,200,300,400,500,600,700,800,900,950}/20");
+@source inline("bg-zinc-400 border-zinc-400 text-zinc-400 bg-zinc-400/20");
 
 @layer base {
   body {
@@ -108,5 +201,136 @@
   }
   .scrollbar-clean::-webkit-scrollbar-thumb:hover {
     background-color: rgba(255, 255, 255, 0.85);
+  }
+
+}
+
+/* Pastillas de cumpleaños de la celda de escritorio del calendario
+   (src/app/(app)/eventos/components/BirthdayPills.tsx). Implementado en
+   CSS plano y no con variantes arbitrarias de Tailwind porque `:has()`
+   con selectores compuestos queda ilegible como clase.
+   Va en @layer utilities (no en components, como el resto de este
+   archivo): Tailwind 4 ordena sus capas theme < base < components <
+   utilities, y esas reglas SOLO ganan si están al menos en la misma capa
+   que las utilidades px-2/py-0.5 que trae cada pastilla en su className —
+   la especificidad no importa entre capas distintas, gana siempre la capa
+   posterior. Desde components, estas reglas perdían en silencio contra
+   las utilidades de Tailwind pese a tener mucha más especificidad.
+   El `:not(:hover)` es lo que hace crecer a la pastilla apuntada en vez
+   de colapsarla, y lo que deja intacto el caso de una sola pastilla (sin
+   :has(.ev-pill:hover) no pasa nada). Al colapsar, max-width/padding van
+   a 0 y no solo flex-grow: con box-sizing: border-box el padding no
+   empuja ancho aunque siga puesto, así que la pastilla no hovered
+   desaparece del todo (texto y píldora amarilla incluidos) en vez de
+   quedar como una raya de color.
+   El espaciado entre pastillas va por margin-right en vez de `gap` en el
+   contenedor: `gap` reserva su hueco entre CADA par de hijos aunque estén
+   colapsados a 0, así que con 3+ cumpleaños la pastilla hovered nunca
+   llegaba a ocupar el 100% (le quedaban restando 1-2 gaps fantasma). Con
+   margin-right sí se puede poner a 0 por completo en estado hover,
+   incluida la propia pastilla hovered si no es la última. */
+@layer utilities {
+  .ev-pills {
+    display: flex;
+    padding: 0 5%;
+  }
+  .ev-pill {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 100%;
+    margin-right: 3px;
+    transition: flex-grow 0.22s ease, max-width 0.22s ease, opacity 0.22s ease, padding 0.22s ease,
+      margin-right 0.22s ease;
+  }
+  /* Centrada en la celda mientras está sola y a su tamaño de contenido
+     (ver :only-child más abajo) — sin esto se pegaría al borde
+     izquierdo, que es donde cae por defecto un único flex item. */
+  .ev-pills:has(.ev-pill:only-child) {
+    justify-content: center;
+  }
+  .ev-pill:last-child {
+    margin-right: 0;
+  }
+  /* Con un solo cumpleaños no hay reparto que hacer: en vez de estirarse
+     a ocupar toda la celda (flex-basis 0 de la regla de arriba), se
+     achica al ancho de su propio nombre — flex-basis auto, sin grow. Si
+     el nombre es más largo que la celda, flex-shrink (heredado, sigue en
+     1) lo reduce igual que antes hasta max-width: 100%, así que un
+     nombre largo se sigue viendo recortado con ellipsis como siempre.
+     Con dos o más pastillas se mantiene el reparto igual de antes
+     (arriba): repartir el ancho a ojo según el tamaño de cada nombre y
+     achicar primero las más grandes hasta igualarlas no es algo que
+     flex-shrink haga de fábrica (por spec reparte proporcionalmente al
+     tamaño base, no iguala), así que replicarlo tal cual pediría medir
+     cada pastilla en JS (ResizeObserver + recalcular en cada resize) —
+     demasiado para un adorno del calendario. */
+  .ev-pill:only-child {
+    flex: 0 1 auto;
+    /* Más aire a los lados que el px-2 (8px) de la clase base: al ir
+       ajustada al nombre en vez de estirada a toda la celda, con el
+       mismo padding se veía muy pegada al texto. */
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+  /* En hover/foco, vuelve a cubrir el mismo ancho que antes (toda la
+     celda): basis se queda en "auto" en los dos estados (solo cambia
+     flex-grow, de 0 a 1) para poder animarlo con la transition de
+     flex-grow de arriba — pasar flex-basis de "auto" a un valor
+     numérico no se anima limpiamente en los navegadores. El padding
+     extra de arriba es solo para el estado compacto (pegado al nombre);
+     expandida debe quedar con el mismo padding que cualquier otra
+     pastilla en hover, si no sus campanas quedan más metidas hacia
+     dentro que las de una pastilla cualquiera en una fila con varios
+     cumpleaños — de ahí que aquí vuelva al px-2 (0.5rem) de la clase
+     base, animado con la misma transition de padding de arriba. */
+  .ev-pill:only-child:hover,
+  .ev-pill:only-child:focus-visible {
+    flex-grow: 1;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  .ev-pills:has(.ev-pill:hover) .ev-pill {
+    margin-right: 0;
+  }
+  .ev-pills:has(.ev-pill:hover) .ev-pill:not(:hover) {
+    flex-grow: 0;
+    max-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    opacity: 0;
+  }
+
+  /* Campanas a los lados del título (BirthdayPills.tsx): a ancho 0 por
+     defecto, así que NO le quitan sitio al nombre salvo cuando la propia
+     pastilla está en hover o con foco de teclado — es entonces cuando se
+     revelan (ancho + margen que las separa del texto) a la vez que la
+     pastilla ya se ha expandido (ver reglas de arriba). Igual criterio de
+     margin en vez de gap que el resto de este bloque: que no quede hueco
+     reservado mientras están colapsadas. :first-child/:last-child en vez
+     de una clase aparte por lado: los dos spans de campana son siempre el
+     primer y último hijo del botón (el título va en medio). */
+  .ev-pill-icon {
+    width: 0;
+    opacity: 0;
+    transition: width 0.15s ease, opacity 0.15s ease, margin 0.15s ease;
+  }
+  .ev-pill-icon:first-child {
+    margin-right: 0;
+  }
+  .ev-pill-icon:last-child {
+    margin-left: 0;
+  }
+  .ev-pill:hover .ev-pill-icon,
+  .ev-pill:focus-visible .ev-pill-icon {
+    width: 16px;
+    opacity: 1;
+  }
+  .ev-pill:hover .ev-pill-icon:first-child,
+  .ev-pill:focus-visible .ev-pill-icon:first-child {
+    margin-right: 4px;
+  }
+  .ev-pill:hover .ev-pill-icon:last-child,
+  .ev-pill:focus-visible .ev-pill-icon:last-child {
+    margin-left: 4px;
   }
 }

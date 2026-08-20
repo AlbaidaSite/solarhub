@@ -87,7 +87,11 @@ export default function CromoEditForm({
   const [codes, setCodes] = useState<string[]>(initialCodes);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [saveError, setSaveError]         = useState<string | null>(null);
-  const [isSaving, startSaving]     = useTransition();
+  // Estado normal, no useTransition: el router.push() del final dejaría la
+  // transición pendiente hasta que cargue el listado, y una navegación
+  // atascada congelaría el botón con el cromo ya guardado. Sigue puesto al
+  // navegar, para no enviar dos veces.
+  const [isSaving, setIsSaving]     = useState(false);
   const [isGenerating, startGen]    = useTransition();
 
   // Cuando copies < codes.length → truncar directamente.
@@ -127,7 +131,7 @@ export default function CromoEditForm({
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaveError(null);
 
     const finalCopies = parseInt(copies, 10);
@@ -167,22 +171,23 @@ export default function CromoEditForm({
     if (frontImage) fd.append("frontImage", frontImage);
     if (backImage)  fd.append("backImage", backImage);
 
-    startSaving(async () => {
-      const result = await updateCromoAction(cromoId, labelsId, fd);
-      if (result.ok) {
-        try {
-          await downloadCromoCodesZip(finalCodes, name.trim(), Number(number));
-        } catch (err) {
-          console.error("Error generando ZIP:", err);
-        }
-        // No usar router.refresh() aquí: lanzado en paralelo a router.push()
-        // cancela la navegación. La caché del destino se invalida ya con
-        // revalidatePath() dentro de la action.
-        router.push("/staff/cromos");
-      } else {
-        setSaveError(result.error);
-      }
-    });
+    setIsSaving(true);
+    const result = await updateCromoAction(cromoId, labelsId, fd);
+    if (!result.ok) {
+      setSaveError(result.error);
+      setIsSaving(false);
+      return;
+    }
+
+    try {
+      await downloadCromoCodesZip(finalCodes, name.trim(), Number(number));
+    } catch (err) {
+      console.error("Error generando ZIP:", err);
+    }
+    // No usar router.refresh() aquí: lanzado en paralelo a router.push()
+    // cancela la navegación. La caché del destino se invalida ya con
+    // revalidatePath() dentro de la action.
+    router.push("/staff/cromos");
   };
 
   return (

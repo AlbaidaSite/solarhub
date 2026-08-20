@@ -39,10 +39,44 @@ const TILES_URL = (x: number, y: number, z: number) =>
 
 const ICON_SIZE = 32;
 
-const CLUSTER_EXPAND_THRESHOLD_DEG = 0.001;
-const CLUSTER_ALTITUDE_FACTOR      = 0.025;
-const CLUSTER_ALTITUDE_MIN         = 0.05;
-const CLUSTER_TRANSITION_MS        = 1000;
+// Separación mínima en pantalla por debajo de la cual dos pines se agrupan.
+// Coincide con el diámetro del círculo de cluster: por debajo de eso los
+// iconos se solaparían de todas formas.
+const CLUSTER_PX = 40;
+
+// Fracción del alto del viewport que ocupa un cluster tras el zoom-to-fit.
+// Con 0.6 los dos pines más lejanos del grupo acaban a ~60% de la pantalla,
+// muy por encima de CLUSTER_PX, así que el grupo se rompe siempre.
+const CLUSTER_FIT_FRACTION = 0.6;
+
+const CLUSTER_TRANSITION_MS = 800;
+
+// Altitud mínima alcanzable. pointOfView mide la altitud en radios de globo
+// (distancia = R·(1+altitud)) y OrbitControls queda limitado a R·(1+MIN_ALTITUDE)
+// en onGlobeReady. Si el zoom-to-fit de un cluster cae por debajo de este
+// suelo no existe cámara capaz de separarlo, y entonces toca abrir el popup.
+const MIN_ALTITUDE = 0.00055;
+
+// FOV por defecto de la cámara de globe.gl, hasta que onGlobeReady lea el real.
+const DEFAULT_FOV = 50;
+
+// Los stickers crecen al acercarse. El motor de teselas elige el nivel Z con
+// ceil(3 − log2(altitud)): sus umbrales son 8/2^i sobre exactamente la misma
+// magnitud que la altitud de pointOfView, así que el nivel Z empieza cuando la
+// altitud baja de 8/2^(Z−1). Z=8 ⇒ altitud 0.03125.
+const PIN_GROW_START_LEVEL = 8;
+
+// Ancho de la rampa en niveles de zoom: el crecimiento se reparte entre Z=9 y
+// Z=12 en vez de dispararse de golpe al cruzar Z=9.
+const PIN_GROW_SPAN_LEVELS = 3;
+
+// Tamaño máximo de un sticker, como múltiplo de ICON_SIZE.
+const PIN_MAX_SCALE = 1.75;
+
+// Umbral del throttle de altitud, en logaritmo (≈5% de cambio relativo). Un
+// umbral absoluto no sirve: cerca del suelo el rango útil es 0.00055–0.03, así
+// que cualquier constante razonable congelaría el clustering al acercarse.
+const ALTITUDE_LOG_EPSILON = 0.05;
 
 function toRad(deg: number): number { return (deg * Math.PI) / 180; }
 function toDeg(rad: number): number { return (rad * 180) / Math.PI; }
@@ -91,6 +125,52 @@ function angularExtentDeg(
   return max;
 }
 
+// La cámara de globe.gl es perspectiva y apunta al centro del globo, así que un
+// punto a `theta` grados del centro de vista se proyecta a:
+//
+//   px = k · sin(theta) / (1 + alt − cos(theta))     con k = (alto/2)/tan(fov/2)
+//
+// El radio del globo se cancela, por lo que `alt` es directamente la altitud
+// que acepta pointOfView. Las dos funciones de abajo son las inversas exactas
+// de esa relación y son la única fuente de verdad tanto para el radio de
+// clustering como para la altitud de destino al abrir un cluster.
+
+function projectionK(viewportHeight: number, fov: number): number {
+  return viewportHeight / 2 / Math.tan(toRad(fov / 2));
+}
+
+// Altitud a la que dos puntos separados `thetaDeg` quedan a `targetPx`.
+function altitudeForAngle(thetaDeg: number, targetPx: number, k: number): number {
+  const t = toRad(thetaDeg);
+  return (k * Math.sin(t)) / targetPx + Math.cos(t) - 1;
+}
+
+// Ángulo que a la altitud `alt` se proyecta como `targetPx`. Sale de resolver
+// c·sinθ + cosθ = 1 + alt (con c = k/targetPx) como √(c²+1)·sin(θ+φ) = 1 + alt.
+function angleForPixels(targetPx: number, alt: number, k: number): number {
+  const c = k / targetPx;
+  const ratio = (1 + alt) / Math.hypot(c, 1);
+  // Solo se sale de rango con altitudes absurdas (alt > ~23): agrupar todo.
+  if (ratio >= 1) return 180;
+  return toDeg(Math.asin(ratio) - Math.atan2(1, c));
+}
+
+// Altitud a la que el motor de teselas entra en el nivel `level`.
+function tileLevelAltitude(level: number): number {
+  return 8 / 2 ** (level - 1);
+}
+
+// Escala de un sticker a una altitud dada: 1 hasta Z=9, y de ahí hasta
+// PIN_MAX_SCALE a lo largo de PIN_GROW_SPAN_LEVELS niveles. El smoothstep deja
+// la derivada a cero en ambos extremos, así que no se percibe ni el arranque
+// del crecimiento al cruzar Z=9 ni el momento en que toca techo.
+function pinScaleForAltitude(alt: number): number {
+  if (!(alt > 0)) return 1;
+  const levelsPast = Math.log2(tileLevelAltitude(PIN_GROW_START_LEVEL) / alt);
+  const t = Math.min(1, Math.max(0, levelsPast / PIN_GROW_SPAN_LEVELS));
+  return 1 + (PIN_MAX_SCALE - 1) * t * t * (3 - 2 * t);
+}
+
 export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
   const router = useRouter();
   const globeEl = useRef<any>(null);
@@ -103,9 +183,16 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
   });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [altitude, setAltitude] = useState(2.5);
+  const [fov, setFov] = useState(DEFAULT_FOV);
   const [modalDetail, setModalDetail] = useState<PinDetail | null>(null);
   const [clusterPopupPins, setClusterPopupPins] = useState<Pin[] | null>(null);
   const loadingPinIdRef = useRef<number | null>(null);
+
+  // Con un overlay abierto (detalle de pin o popup de cluster) el mapa
+  // queda congelado: ni hover, ni clic, ni zoom, ni foco de teclado. Es
+  // una sola bandera y no dos comprobaciones sueltas para que los tres
+  // bloqueos no puedan desincronizarse.
+  const overlayOpen = modalDetail !== null || clusterPopupPins !== null;
 
   // Formatear fecha
   const formatDate = useCallback((dateStr: string) => {
@@ -117,11 +204,23 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
     });
   }, []);
 
-  // Calcular radio de cluster en grados, dependiente de la altitud actual.
-  // Más altitud (zoom out) ⇒ radio más amplio para agrupar pines lejanos.
-  const clusterRadiusDeg = useMemo(() => {
-    return Math.max(altitude * 4, 0.02);
-  }, [altitude]);
+  // El clustering se define en píxeles de pantalla, no en grados: dos pines se
+  // agrupan cuando el usuario no podría distinguirlos. El equivalente en grados
+  // depende de la altitud y del viewport, así que se deriva de la proyección en
+  // lugar de aproximarse con una constante.
+  const viewportHeight =
+    containerSize.height ||
+    (typeof window !== "undefined" ? window.innerHeight : 600);
+  const projK = useMemo(
+    () => projectionK(viewportHeight, fov),
+    [viewportHeight, fov]
+  );
+  // La separación mínima acompaña al tamaño del icono: si los stickers crecen y
+  // el umbral se quedara en CLUSTER_PX, dos pines "separados" se solaparían.
+  const clusterRadiusDeg = useMemo(
+    () => angleForPixels(CLUSTER_PX * pinScaleForAltitude(altitude), altitude, projK),
+    [altitude, projK]
+  );
 
   // Memoizar cálculo de elementos: cada elemento es o bien un pin individual
   // o un cluster de varios pines. El clustering recalcula cuando cambia la
@@ -133,12 +232,16 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
     for (const pin of pins) {
       if (visited.has(pin.id)) continue;
 
-      // Encontrar todos los pines dentro del radio de cluster
+      // Pines dentro del radio, medido sobre la esfera y no como caja en
+      // lat/lng: un grado de longitud mide la mitad a 60° de latitud, y la
+      // caja agrupaba de más justo ahí.
       const group = pins.filter(
         (p) =>
           !visited.has(p.id) &&
-          Math.abs(p.latitude - pin.latitude) < clusterRadiusDeg &&
-          Math.abs(p.longitude - pin.longitude) < clusterRadiusDeg
+          greatCircleDistanceDeg(
+            pin.latitude, pin.longitude,
+            p.latitude, p.longitude
+          ) < clusterRadiusDeg
       );
 
       group.forEach((p) => visited.add(p.id));
@@ -166,7 +269,7 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
               data-created="${pin.created_at}"
               style="width:${ICON_SIZE}px;height:${ICON_SIZE}px;pointer-events:auto;cursor:pointer;"
             >
-              <div data-inner style="width:100%;height:100%;transition:transform 0.15s ease;transform-origin:center center;">
+              <div data-inner style="width:100%;height:100%;transform:scale(var(--pin-zoom,1)) scale(var(--pin-hover,1));transition:transform 0.25s ease-out;transform-origin:center center;">
                 <img
                   src="${iconUrl}"
                   alt="${pin.place}"
@@ -179,10 +282,9 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
         });
       } else {
         // Cluster — mismo patrón: externo limpio, interno escalable
-        const centerLat =
-          group.reduce((sum, p) => sum + p.latitude, 0) / group.length;
-        const centerLng =
-          group.reduce((sum, p) => sum + p.longitude, 0) / group.length;
+        // El mismo centroide esférico al que vuela handleClusterClick, para
+        // que el círculo no se desplace bajo el cursor al abrirlo.
+        const { lat: centerLat, lng: centerLng } = sphericalCentroid(group);
         const pinIds = group.map((p) => p.id);
 
         result.push({
@@ -200,7 +302,7 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
               data-cluster-lng="${centerLng}"
               style="width:40px;height:40px;pointer-events:auto;cursor:pointer;"
             >
-              <div data-inner style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(245,158,11,0.85);border:2px solid rgba(255,255,255,0.7);border-radius:9999px;box-shadow:0 2px 12px rgba(0,0,0,0.4);color:#18181b;font-weight:700;font-size:14px;transition:transform 0.15s ease;transform-origin:center center;">
+              <div data-inner style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(245,158,11,0.85);border:2px solid rgba(255,255,255,0.7);border-radius:9999px;box-shadow:0 2px 12px rgba(0,0,0,0.4);color:#18181b;font-weight:700;font-size:14px;transform:scale(var(--pin-hover,1));transition:transform 0.15s ease;transform-origin:center center;">
                 ${group.length}
               </div>
             </div>
@@ -223,12 +325,15 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
 
     const inner = outer.querySelector<HTMLElement>("[data-inner]");
     if (inner) {
-      const scale = pinData.isCluster ? "scale(1.12)" : "scale(1.25)";
+      // El hover va por variable y no sobrescribiendo `transform`: en los
+      // stickers ese transform lleva además la escala de zoom, y asignarlo
+      // entero la borraría hasta el siguiente movimiento de cámara.
+      const hoverScale = pinData.isCluster ? "1.12" : "1.25";
       outer.addEventListener("mouseenter", () => {
-        inner.style.transform = scale;
+        inner.style.setProperty("--pin-hover", hoverScale);
       });
       outer.addEventListener("mouseleave", () => {
-        inner.style.transform = "scale(1)";
+        inner.style.setProperty("--pin-hover", "1");
       });
     }
 
@@ -267,8 +372,12 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
     [altitude, flyTo]
   );
 
-  // Click en cluster: mostrar popup si pines coincidentes o si el zoom-to-fit
-  // supondría alejarse; hacer zoom-to-fit solo cuando resulta en acercamiento.
+  // Click en cluster: encuadrar el grupo entero en pantalla. A la altitud en la
+  // que su extensión ocupa CLUSTER_FIT_FRACTION del alto, los dos pines más
+  // lejanos quedan a cientos de píxeles — muy por encima de CLUSTER_PX — así que
+  // el grupo se rompe siempre en al menos dos elementos, sin necesidad de buscar
+  // la altitud por tanteo. Los subgrupos que sigan apretados quedan como
+  // clusters más pequeños y se abren con otro clic, un nivel más abajo.
   const handleClusterClick = useCallback(
     (pinIds: number[]) => {
       const clusterPins = pinIds
@@ -278,29 +387,45 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
 
       const extent = angularExtentDeg(clusterPins);
 
-      if (extent < CLUSTER_EXPAND_THRESHOLD_DEG) {
+      // Dos altitudes distintas, y confundirlas manda al popup clusters que sí
+      // se podían abrir: `altSplit` es la más alta a la que el grupo todavía se
+      // rompe (extremos a CLUSTER_PX), y `altFit` la que además lo encuadra
+      // holgadamente. altFit ≤ altSplit siempre, porque encuadrar exige más zoom
+      // que separar.
+      // Con el icono ya crecido: la pregunta es si se separarían pegando la
+      // cámara al suelo, y ahí los stickers están a PIN_MAX_SCALE.
+      const altSplit = altitudeForAngle(extent, CLUSTER_PX * PIN_MAX_SCALE, projK);
+      const altFit = altitudeForAngle(
+        extent,
+        CLUSTER_FIT_FRACTION * viewportHeight,
+        projK
+      );
+
+      // Solo el criterio de separación decide el popup: si ni pegando la cámara
+      // al suelo se distinguirían, ningún vuelo ayuda y toca listarlos.
+      if (altSplit < MIN_ALTITUDE) {
         setClusterPopupPins(clusterPins);
         return;
       }
+
+      // Encuadre ideal, pero acotado por el suelo de la cámara (abajo) y por la
+      // vista actual (arriba: un clic en un cluster nunca debe alejar). El suelo
+      // sigue separando el grupo, porque altSplit ≥ MIN_ALTITUDE.
+      const target = Math.min(Math.max(altFit, MIN_ALTITUDE), altitude);
 
       const { lat, lng } = sphericalCentroid(clusterPins);
-      const alt = Math.max(CLUSTER_ALTITUDE_MIN, extent * CLUSTER_ALTITUDE_FACTOR);
-
-      // Nunca hacer zoom-out: si la altitud calculada no mejora la vista actual,
-      // abrir el popup en lugar de alejar la cámara.
-      if (alt >= altitude) {
-        setClusterPopupPins(clusterPins);
-        return;
-      }
-
-      globeEl.current?.pointOfView({ lat, lng, altitude: alt }, CLUSTER_TRANSITION_MS);
+      globeEl.current?.pointOfView(
+        { lat, lng, altitude: target },
+        CLUSTER_TRANSITION_MS
+      );
     },
-    [pins, altitude]
+    [pins, altitude, viewportHeight, projK]
   );
 
   // Detectar interacción en pines y mostrar tooltip + manejar clicks
   useEffect(() => {
     const handleMouseEnter = (e: MouseEvent) => {
+      if (overlayOpen) return;
       let target = e.target as Element | null;
       target = target?.closest?.("[data-pin-id]") ?? null;
       if (!target) return;
@@ -329,6 +454,7 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
     };
 
     const handleClick = (e: MouseEvent) => {
+      if (overlayOpen) return;
       const targetEl = e.target as Element | null;
 
       // Click sobre cluster
@@ -360,6 +486,11 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
     // de funcionar. Este handler reenvía el wheel al canvas para que el
     // zoom siga activo independientemente de dónde esté el cursor.
     const handleWheel = (e: WheelEvent) => {
+      // Sin esta guarda, rodar la rueda sobre el modal (que se monta
+      // dentro de este mismo contenedor, por lo que el evento burbujea
+      // hasta aquí) reenviaba el wheel al canvas y el globo seguía
+      // haciendo zoom por detrás.
+      if (overlayOpen) return;
       const canvas = globeContainer?.querySelector<HTMLCanvasElement>("canvas");
       if (canvas && e.target !== canvas) {
         canvas.dispatchEvent(
@@ -397,14 +528,16 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
         globeContainer.removeEventListener("wheel", handleWheel);
       }
     };
-  }, [formatDate, handleClusterClick, handlePinClick, pins]);
+  }, [formatDate, handleClusterClick, handlePinClick, overlayOpen, pins]);
 
-  // Deshabilitar controles del globo cuando el popup de cluster está abierto
+  // Congelar el globo mientras haya un overlay abierto: OrbitControls
+  // gobierna arrastre, rueda y pellizco, así que con enabled=false no
+  // queda ningún gesto capaz de mover ni acercar el mapa.
   useEffect(() => {
     const controls = globeEl.current?.controls?.();
     if (!controls) return;
-    controls.enabled = clusterPopupPins === null;
-  }, [clusterPopupPins]);
+    controls.enabled = !overlayOpen;
+  }, [overlayOpen]);
 
   // Calcular tamaño del contenedor
   useEffect(() => {
@@ -460,73 +593,108 @@ export default function GlobeClient({ pins, stickers }: GlobeClientProps) {
       className="relative w-full h-full"
       style={{ pointerEvents: "auto" }}
     >
-      <Globe
-        ref={globeEl}
-        width={containerSize.width || (typeof window !== "undefined" ? window.innerWidth : 800)}
-        height={
-          containerSize.height || (typeof window !== "undefined" ? window.innerHeight : 600)
-        }
-        globeImageUrl={GLOBE_IMAGE_URL}
-        bumpImageUrl="https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png"
-        showAtmosphere
-        enablePointerInteraction
-        globeTileEngineUrl={TILES_URL}
-        htmlElementsData={htmlElements}
-        htmlLat={(d) => (d as PinData).lat}
-        htmlLng={(d) => (d as PinData).lng}
-        htmlElement={renderPinWithTransition}
-        onGlobeReady={() => {
-          const globe = globeEl.current;
-          if (!globe) return;
-          const r = globe.getGlobeRadius();
-          const controls = globe.controls();
-          // Límite zoom out: el globo ocupa al menos ~1/3 de la pantalla
-          controls.maxDistance = r * 4.5;
-          // Límite zoom in: un poco más de acercamiento que el defecto (~r*1.01)
-          controls.minDistance = r * 1.00055;
-          // Inicializar altitud
-          const pov = globe.pointOfView();
-          setAltitude(pov.altitude);
-        }}
-        onZoom={(pov) => {
-          // Throttle: solo actualizar si la altitud cambió significativamente
-          setAltitude((prev) => {
-            if (Math.abs(prev - pov.altitude) < 0.03) return prev;
-            return pov.altitude;
-          });
-        }}
-      />
-
-      {/* Tooltip */}
-      {tooltip.visible && (
-        <div
-          className="fixed pointer-events-none z-50 bg-slate-900/95 text-white text-xs px-2.5 py-1.5 rounded border border-white/20 whitespace-pre"
-          style={{
-            left: `${tooltip.x}px`,
-            top: `${tooltip.y}px`,
-            transform: "translate(-50%, -100%)",
-            backdropFilter: "blur(4px)",
+      {/* Todo el mapa (globo, tooltip, botón de alta y créditos) queda
+          `inert` mientras haya un overlay abierto: ningún elemento de
+          aquí dentro puede recibir foco, clic ni ser anunciado por un
+          lector de pantalla. `display: contents` hace que este div no
+          genere caja, así que los hijos absolutos siguen posicionándose
+          respecto al contenedor de arriba igual que antes. */}
+      <div className="contents" inert={overlayOpen || undefined}>
+        <Globe
+          ref={globeEl}
+          width={containerSize.width || (typeof window !== "undefined" ? window.innerWidth : 800)}
+          height={
+            containerSize.height || (typeof window !== "undefined" ? window.innerHeight : 600)
+          }
+          globeImageUrl={GLOBE_IMAGE_URL}
+          bumpImageUrl="https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png"
+          showAtmosphere
+          enablePointerInteraction
+          globeTileEngineUrl={TILES_URL}
+          htmlElementsData={htmlElements}
+          htmlLat={(d) => (d as PinData).lat}
+          htmlLng={(d) => (d as PinData).lng}
+          htmlElement={renderPinWithTransition}
+          onGlobeReady={() => {
+            const globe = globeEl.current;
+            if (!globe) return;
+            const r = globe.getGlobeRadius();
+            const controls = globe.controls();
+            // Límite zoom out: el globo ocupa al menos ~1/3 de la pantalla
+            controls.maxDistance = r * 4.5;
+            // Límite zoom in: un poco más de acercamiento que el defecto (~r*1.01)
+            controls.minDistance = r * (1 + MIN_ALTITUDE);
+            // Inicializar altitud
+            const pov = globe.pointOfView();
+            setAltitude(pov.altitude);
+            containerRef.current?.style.setProperty(
+              "--pin-zoom",
+              pinScaleForAltitude(pov.altitude).toFixed(4)
+            );
+            // FOV real de la cámara: entra en el cálculo de píxeles por grado.
+            const camFov = globe.camera()?.fov;
+            if (camFov) setFov(camFov);
           }}
+          onZoom={(pov) => {
+            // La escala se escribe directo en el DOM, sin pasar por el estado:
+            // OrbitControls emite este evento en cada frame (damping activo,
+            // vuelos incluidos), así que el crecimiento sigue a la cámara. Con
+            // el throttle de `altitude` de abajo se vería a escalones.
+            containerRef.current?.style.setProperty(
+              "--pin-zoom",
+              pinScaleForAltitude(pov.altitude).toFixed(4)
+            );
+
+            // Throttle relativo: la altitud recorre tres órdenes de magnitud
+            // (2.5 arriba, 0.00055 en el suelo), así que el umbral tiene que
+            // ser proporcional o el clustering deja de recalcularse de cerca.
+            setAltitude((prev) => {
+              if (
+                prev > 0 &&
+                pov.altitude > 0 &&
+                Math.abs(Math.log(prev / pov.altitude)) < ALTITUDE_LOG_EPSILON
+              ) {
+                return prev;
+              }
+              return pov.altitude;
+            });
+          }}
+        />
+
+        {/* Tooltip: se oculta también con un overlay abierto. No basta
+            con el mouseleave del pin — al montarse el modal encima, el
+            pin deja de recibir eventos y ese mouseleave nunca llega, así
+            que el tooltip se quedaba flotando sobre el telón. */}
+        {tooltip.visible && !overlayOpen && (
+          <div
+            className="fixed pointer-events-none z-50 bg-slate-900/95 text-white text-xs px-2.5 py-1.5 rounded border border-white/20 whitespace-pre"
+            style={{
+              left: `${tooltip.x}px`,
+              top: `${tooltip.y}px`,
+              transform: "translate(-50%, -100%)",
+              backdropFilter: "blur(4px)",
+            }}
+          >
+            {tooltip.content}
+          </div>
+        )}
+
+        {/* Añadir Pegatina button */}
+        <button
+          type="button"
+          onClick={() => router.push("/mapa/nueva")}
+          aria-label="Añadir Pegatina"
+          title="Añadir Pegatina"
+          className="absolute z-20 top-7 left-4 nav:top-28 nav:left-4 flex items-center justify-center gap-2 w-10 h-10 nav:w-auto nav:h-12 nav:px-4 rounded-full bg-white/10 hover:bg-white/20 border border-white/30 text-white hover:text-amber-300 transition-all duration-0 shadow-lg backdrop-blur-sm cursor-pointer"
         >
-          {tooltip.content}
+          <Plus size={20} strokeWidth={2.5} />
+          <span className="hidden nav:inline text-sm font-semibold">Añadir Pegatina</span>
+        </button>
+
+        {/* Attribution footer */}
+        <div className="absolute bottom-4 right-4 text-xs text-white/50 select-none pointer-events-none">
+          Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community
         </div>
-      )}
-
-      {/* Añadir Pegatina button */}
-      <button
-        type="button"
-        onClick={() => router.push("/mapa/nueva")}
-        aria-label="Añadir Pegatina"
-        title="Añadir Pegatina"
-        className="absolute z-20 top-7 left-4 nav:top-28 nav:left-4 flex items-center justify-center gap-2 w-10 h-10 nav:w-auto nav:h-12 nav:px-4 rounded-full bg-white/10 hover:bg-white/20 border border-white/30 text-white hover:text-amber-300 transition-all duration-0 shadow-lg backdrop-blur-sm cursor-pointer"
-      >
-        <Plus size={20} strokeWidth={2.5} />
-        <span className="hidden nav:inline text-sm font-semibold">Añadir Pegatina</span>
-      </button>
-
-      {/* Attribution footer */}
-      <div className="absolute bottom-4 right-4 text-xs text-white/50 select-none pointer-events-none">
-        Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community
       </div>
 
       {/* Modal de detalle del pin */}
