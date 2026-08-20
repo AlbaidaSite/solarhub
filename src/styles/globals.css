@@ -1,5 +1,78 @@
 @import "tailwindcss";
 
+/* Contenedor de Ciro (src/components/ciro/Ciro.tsx). `container-type` es lo
+   que da sentido a los `cqw` con los que el componente mide TODAS sus
+   piezas: 1cqw = 1% del lado. Como el lado lo fija --ciro-lado (un min() de
+   px y unidades de ventana), el conjunto encoge solo cuando la ventana se
+   queda pequeña, sin JS y sin recalcular pieza por pieza. */
+.ciro-raiz {
+  width: var(--ciro-lado, 340px);
+  aspect-ratio: 1;
+  container-type: inline-size;
+}
+
+/* Latido de las llamas de Ciro (src/components/ciro/Ciro.tsx). El span de
+   latido vive DENTRO del de órbita, así que hereda su rotate: un
+   translateY plano aquí ya es radial para cada llama, sin trigonometría.
+   Amplitud y duración se heredan del contenedor de Ciro, iguales para las
+   ocho llamas y sin delay: laten todas a la vez. */
+@keyframes ciro-latido {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-1 * var(--ciro-amp, 6px)));
+  }
+}
+
+/* La curva NO es ease-in-out: esa llega al extremo con velocidad 0 (sus dos
+   puntos de control se apoyan en 0 y en 1), y con `alternate` eso encadena
+   una frenada con un arranque justo en el punto de giro — las llamas parecen
+   quedarse paradas ahí. Esta bezier mantiene velocidad en los extremos
+   (y1 = 0.2, y2 = 0.8, pendiente 0.5 a ambos lados) y suaviza el centro, así
+   que el cambio de sentido es rápido sin que el vaivén se vuelva mecánico. */
+.ciro-latido {
+  animation: ciro-latido var(--ciro-dur, 2.4s) cubic-bezier(0.4, 0.2, 0.6, 0.8) infinite
+    alternate;
+}
+
+/* Las llamas cortas van en contrafase: el mismo ciclo, pero arrancando por
+   el extremo contrario, así que se alejan justo cuando las largas se
+   acercan. Tiene que ir DESPUÉS de .ciro-latido — misma especificidad, gana
+   el orden — porque el atajo `animation` de arriba resetea `direction`. */
+.ciro-latido-contra {
+  animation-direction: alternate-reverse;
+}
+
+/* Fogonazo: al hacer clic en Ciro las ocho llamas dan un tirón hacia fuera y
+   vuelven. Va sobre la propiedad `translate` del <img>, no sobre `transform`,
+   por dos motivos: `translate` se aplica ANTES que el `rotate` con el que
+   cada asset corrige su orientación (así el tirón sale radial y no en el eje
+   girado del dibujo), y al ser una propiedad distinta no pisa el latido del
+   <span> padre, que sigue corriendo por debajo. */
+@keyframes ciro-fogonazo {
+  0% {
+    translate: 0 0;
+  }
+  35% {
+    translate: 0 calc(-1 * var(--ciro-fog-amp, 20px));
+  }
+  100% {
+    translate: 0 0;
+  }
+}
+
+.ciro-fogonazo .ciro-llama {
+  animation: ciro-fogonazo var(--ciro-fog-dur, 0.55s) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ciro-latido,
+  .ciro-fogonazo .ciro-llama {
+    animation: none;
+  }
+}
+
 @theme {
   /* Breakpoint propio para la transición navbar-desktop ↔ menú móvil.
      Más bajo que `md` (650px) porque el navbar cabe holgado a partir de 700px. */
