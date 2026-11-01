@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "type-check": "tsc --noEmit",
-    "generate-thumbnails": "node --env-file=.env.development scripts/generate-thumbnails.mjs",
+    "generate-thumbnails": "node --env-file=.env.local scripts/generate-thumbnails.mjs",
     "test": "vitest run",
     "test:e2e": "node --env-file-if-exists=.env.test ./node_modules/vitest/vitest.mjs run --config vitest.e2e.config.ts"
   },
