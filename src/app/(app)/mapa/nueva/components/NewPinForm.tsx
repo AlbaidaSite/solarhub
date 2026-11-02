@@ -3,16 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { AlertCircle, ArrowLeft, Calendar, CheckCircle2, Loader2, MapPin, Search, Upload } from "lucide-react";
+import { ArrowLeft, Calendar, MapPin, Search } from "lucide-react";
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
 import { parseCoordinates } from "@/lib/parseCoordinates";
 import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
-import { supabase } from "@/lib/supabase/client";
-import { addMapMediaAction, createPinAction, deletePinAction } from "../../actions";
-import type { MediaItemToInsert } from "../../actions";
+import { createPinAction, deletePinAction } from "../../actions";
+import { useMediaUploads, type UploadFailure } from "../../hooks/useMediaUploads";
 import MediaSection from "./MediaSection";
 import type { MediaEntry } from "./MediaSection";
+import UploadStatusList from "./UploadStatusList";
 import type { Sticker } from "@/types/map";
 import type { Country } from "../../actions";
 
@@ -27,54 +27,15 @@ interface NewPinFormProps {
 
 type SubmitPhase = "form" | "uploading" | "partial_error";
 
-type EntryUploadStatus =
-  | { kind: "idle" }
-  | { kind: "uploading" }
-  | { kind: "ok"; path: string }
-  | { kind: "error"; msg: string };
-
-interface UploadFailure {
-  clientId: string;
-  name: string;
-  msg: string;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const STORAGE_BUCKET =
-  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ?? "solarhub-assets";
 
 function todayValue(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate()
   ).padStart(2, "0")}`;
-}
-
-function mimeToExt(blob: Blob, originalName: string): string {
-  if (blob.type.includes("webp")) return "webp";
-  if (blob.type.includes("jpeg") || blob.type.includes("jpg")) return "jpg";
-  if (blob.type.includes("png")) return "png";
-  if (blob.type.includes("gif")) return "gif";
-  return originalName.split(".").pop() ?? "bin";
-}
-
-async function uploadBlob(
-  pinId: number,
-  entry: MediaEntry
-): Promise<{ path: string; mimeType: string; size: number } | { error: string }> {
-  const blob = entry.processedBlob!;
-  const ext = mimeToExt(blob, entry.originalName);
-  const storagePath = `map-media/${pinId}/${crypto.randomUUID()}.${ext}`;
-
-  const { data, error } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(storagePath, blob, { contentType: blob.type, upsert: false });
-
-  if (error) return { error: error.message };
-  return { path: data.path, mimeType: blob.type, size: blob.size };
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +61,7 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
 
   // Submit state
   const [submitPhase, setSubmitPhase] = useState<SubmitPhase>("form");
-  const [uploadStatuses, setUploadStatuses] = useState<Record<string, EntryUploadStatus>>({});
+  const { statuses: uploadStatuses, runUploadRound } = useMediaUploads();
   const [uploadFailures, setUploadFailures] = useState<UploadFailure[]>([]);
   const [createdPinId, setCreatedPinId] = useState<number | null>(null);
   const [isDiscarding, setIsDiscarding] = useState(false);
@@ -190,54 +151,6 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
     if (isDirty && !window.confirm("¿Descartar los cambios?")) return;
     router.push("/mapa");
   };
-
-  // ---------------------------------------------------------------------------
-  // Upload round (used by both initial submit and retry)
-  // ---------------------------------------------------------------------------
-
-  const runUploadRound = useCallback(
-    async (pinId: number, entriesToUpload: MediaEntry[]) => {
-      // Mark all as uploading
-      setUploadStatuses((prev) => {
-        const next = { ...prev };
-        for (const e of entriesToUpload) next[e.clientId] = { kind: "uploading" };
-        return next;
-      });
-
-      const settled = await Promise.allSettled(
-        entriesToUpload.map((entry) => uploadBlob(pinId, entry))
-      );
-
-      const toInsert: MediaItemToInsert[] = [];
-      const failures: UploadFailure[] = [];
-
-      for (let i = 0; i < entriesToUpload.length; i++) {
-        const entry = entriesToUpload[i];
-        const result = settled[i];
-
-        if (result.status === "fulfilled" && "path" in result.value) {
-          const { path, mimeType, size } = result.value;
-          toInsert.push({ path, type: entry.mediaType, mimeType, size });
-          setUploadStatuses((prev) => ({ ...prev, [entry.clientId]: { kind: "ok", path } }));
-        } else {
-          const msg =
-            result.status === "rejected"
-              ? String(result.reason)
-              : (result.value as { error: string }).error;
-          failures.push({ clientId: entry.clientId, name: entry.originalName, msg });
-          setUploadStatuses((prev) => ({ ...prev, [entry.clientId]: { kind: "error", msg } }));
-        }
-      }
-
-      // Backend insert for successful uploads
-      if (toInsert.length > 0) {
-        await addMapMediaAction(pinId, toInsert);
-      }
-
-      return failures;
-    },
-    []
-  );
 
   // ---------------------------------------------------------------------------
   // Submit
@@ -365,33 +278,7 @@ export default function NewPinForm({ stickers, countries }: NewPinFormProps) {
           )}
 
           {/* Per-file status */}
-          <div className="flex flex-col gap-3">
-            {readyEntries.map((entry) => {
-              const status = uploadStatuses[entry.clientId];
-              return (
-                <div
-                  key={entry.clientId}
-                  className="flex items-center gap-3 bg-white/5 rounded-xl px-4 py-3 border border-white/10"
-                >
-                  {!status || status.kind === "idle" ? (
-                    <Upload size={16} className="text-white/30 shrink-0" />
-                  ) : status.kind === "uploading" ? (
-                    <Loader2 size={16} className="text-amber-300 animate-spin shrink-0" />
-                  ) : status.kind === "ok" ? (
-                    <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                  ) : (
-                    <AlertCircle size={16} className="text-red-400 shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white truncate">{entry.originalName}</p>
-                    {status?.kind === "error" && (
-                      <p className="text-xs text-red-400 mt-0.5">{status.msg}</p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <UploadStatusList entries={readyEntries} statuses={uploadStatuses} />
 
           {submitPhase === "partial_error" && (
             <div className="flex flex-col gap-3 pt-2">

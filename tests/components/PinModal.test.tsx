@@ -33,11 +33,17 @@ vi.mock("@/app/(app)/mapa/actions", () => ({
   deletePinAction: vi.fn(),
 }));
 
+vi.mock("@/app/(app)/mapa/video-actions", () => ({
+  getVideoEmbedUrlAction: vi.fn(),
+  syncVideoStatusAction: vi.fn(),
+}));
+
 import {
   checkPinEditPermissionAction,
   deletePinAction,
 } from "@/app/(app)/mapa/actions";
 import PinModal from "@/app/(app)/mapa/components/PinModal";
+import type { BunnyVideoMedia } from "@/types/map";
 
 const baseDetail: PinDetail = {
   pin: {
@@ -55,10 +61,23 @@ const baseDetail: PinDetail = {
   username: "horgarler",
   sticker: { id: 3, name: "Sol naciente", icon_path: "https://cdn.test/stickers/sol.webp" },
   media: [
-    { id: 11, pin_id: 7, url: "https://cdn.test/map/foto-1.webp", type: "PHOTO" },
-    { id: 12, pin_id: 7, url: "https://cdn.test/map/video-1.mp4", type: "VIDEO" },
+    { id: 11, pin_id: 7, source: "supabase-photo", url: "https://cdn.test/map/foto-1.webp", type: "PHOTO" },
+    { id: 12, pin_id: 7, source: "supabase-video-legacy", url: "https://cdn.test/map/video-1.mp4", type: "VIDEO" },
   ],
 };
+
+function bunnyVideo(id: number, videoStatus: BunnyVideoMedia["videoStatus"]): BunnyVideoMedia {
+  return {
+    id,
+    pin_id: 7,
+    source: "bunny-video",
+    type: "VIDEO",
+    videoId: `guid-${id}`,
+    videoStatus,
+    createdAt: new Date().toISOString(),
+    thumbnailUrl: `https://vz-test.b-cdn.net/guid-${id}/thumbnail.jpg`,
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -164,10 +183,65 @@ describe("PinModal · multimedia", () => {
     expect(screen.queryByRole("button", { name: /^Ver (foto|vídeo)/ })).not.toBeInTheDocument();
   });
 
-  it("un pin antiguo sin multimedia sigue abriéndose, con la tesela de la pegatina", () => {
+  it("un pin sin multimedia sigue abriéndose, con el logo en lugar del archivo", () => {
     render(<PinModal detail={{ ...baseDetail, media: [] }} onClose={vi.fn()} />);
     expect(screen.getByRole("heading", { level: 1, name: "Parque del Retiro" })).toBeInTheDocument();
     expect(screen.queryByAltText("Parque del Retiro")).not.toBeInTheDocument();
+    expect(screen.getByAltText("Sin contenido multimedia")).toHaveAttribute(
+      "src",
+      "/media/img/logoW.png",
+    );
+  });
+});
+
+describe("PinModal · vídeos de Bunny", () => {
+  it("un vídeo listo se ve en el mismo carrusel, con su miniatura, y se reproduce con el player", async () => {
+    render(
+      <PinModal
+        detail={{ ...baseDetail, media: [baseDetail.media[0], bunnyVideo(20, "READY")] }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Ver vídeo 2" }));
+    expect(screen.getByRole("button", { name: "Reproducir vídeo" })).toBeInTheDocument();
+    // Miniatura del CDN de Bunny, no un <video> de Storage.
+    expect(document.querySelector("video")).toBeNull();
+    expect(
+      Array.from(document.querySelectorAll("img")).some(
+        (img) => img.getAttribute("src") === "https://vz-test.b-cdn.net/guid-20/thumbnail.jpg",
+      ),
+    ).toBe(true);
+  });
+
+  it("un vídeo procesándose lo ve cualquier usuario", async () => {
+    render(<PinModal detail={{ ...baseDetail, media: [bunnyVideo(21, "PROCESSING")] }} onClose={vi.fn()} />);
+    expect(screen.getByText("Procesando vídeo…")).toBeInTheDocument();
+  });
+
+  it("un vídeo fallido no existe para quien no puede editar el pin", async () => {
+    render(
+      <PinModal
+        detail={{ ...baseDetail, media: [baseDetail.media[0], bunnyVideo(22, "FAILED")] }}
+        onClose={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(checkPinEditPermissionAction).toHaveBeenCalled());
+    // Queda un solo archivo visible: ni carrusel ni aviso de error.
+    expect(screen.queryByRole("button", { name: /^Ver (foto|vídeo)/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/No se ha podido procesar/)).not.toBeInTheDocument();
+  });
+
+  it("el autor sí ve el vídeo fallido, con el aviso para arreglarlo", async () => {
+    vi.mocked(checkPinEditPermissionAction).mockResolvedValue(true);
+    render(<PinModal detail={{ ...baseDetail, media: [bunnyVideo(22, "FAILED")] }} onClose={vi.fn()} />);
+    expect(await screen.findByText(/No se ha podido procesar el vídeo/)).toBeInTheDocument();
+  });
+
+  it("si el único archivo es un vídeo fallido, el resto ve el logo", async () => {
+    render(<PinModal detail={{ ...baseDetail, media: [bunnyVideo(22, "FAILED")] }} onClose={vi.fn()} />);
+    await waitFor(() => expect(checkPinEditPermissionAction).toHaveBeenCalled());
+    expect(screen.getByAltText("Sin contenido multimedia")).toBeInTheDocument();
   });
 });
 

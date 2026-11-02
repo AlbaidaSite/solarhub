@@ -10,6 +10,8 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { validateVideoFile, videoMimeType } from "@/lib/media/videoValidation";
+import { MAX_VIDEO_DURATION_S } from "@/lib/bunny/constants";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -28,6 +30,8 @@ export interface MediaEntry {
   previewUrl: string;
   status: MediaStatus;
   errorMsg: string | null;
+  /** Duración leída en el navegador (solo vídeos); null si no se pudo leer. */
+  durationS?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -35,7 +39,10 @@ export interface MediaEntry {
 // ---------------------------------------------------------------------------
 
 const MAX_FILES = 5;
+// Solo fotos (ya comprimidas). Los vídeos van a Bunny Stream con su propio
+// límite (MAX_VIDEO_BYTES, ver lib/media/videoValidation.ts).
 const MAX_SIZE_BYTES = 15 * 1024 * 1024; // 15 MB
+const VIDEO_METADATA_TIMEOUT_MS = 5000;
 
 // ---------------------------------------------------------------------------
 // Detection
@@ -101,6 +108,38 @@ async function extractVideoThumbnail(file: File): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Video duration (metadata via hidden <video>). Null if the browser can't
+// read it (e.g. HEVC on desktop Chrome): then the server decides.
+// ---------------------------------------------------------------------------
+
+function readVideoDuration(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.preload = "metadata";
+
+    let settled = false;
+    const done = (durationS: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+      resolve(durationS);
+    };
+    const timer = setTimeout(() => done(null), VIDEO_METADATA_TIMEOUT_MS);
+
+    video.addEventListener(
+      "loadedmetadata",
+      () => done(Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null),
+      { once: true }
+    );
+    video.addEventListener("error", () => done(null), { once: true });
+    video.src = url;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Image processing: HEIC → JPEG (if needed) + compress + strip EXIF via canvas
 // ---------------------------------------------------------------------------
 
@@ -160,7 +199,7 @@ async function processImageFile(file: File): Promise<File> {
 
 type ProcessResult = Pick<
   MediaEntry,
-  "processedBlob" | "processedSize" | "previewUrl" | "status" | "errorMsg"
+  "processedBlob" | "processedSize" | "previewUrl" | "status" | "errorMsg" | "durationS"
 >;
 
 async function processEntry(file: File, mediaType: "PHOTO" | "VIDEO"): Promise<ProcessResult> {
@@ -185,14 +224,21 @@ async function processEntry(file: File, mediaType: "PHOTO" | "VIDEO"): Promise<P
         errorMsg: null,
       };
     } else {
-      // Videos: no compression, just size check + thumbnail
-      if (file.size > MAX_SIZE_BYTES) {
+      // Videos: no compression, just validation (type, size, duration) + thumbnail
+      const durationS = await readVideoDuration(file);
+      const errors = validateVideoFile({
+        type: videoMimeType(file),
+        size: file.size,
+        durationS,
+      });
+      if (errors.length > 0) {
         return {
           processedBlob: null,
           processedSize: 0,
           previewUrl: "",
           status: "error",
-          errorMsg: "Demasiado grande (máx. 15 MB)",
+          errorMsg: errors.join(" "),
+          durationS,
         };
       }
       const previewUrl = await extractVideoThumbnail(file);
@@ -202,6 +248,7 @@ async function processEntry(file: File, mediaType: "PHOTO" | "VIDEO"): Promise<P
         previewUrl,
         status: "ready",
         errorMsg: null,
+        durationS,
       };
     }
   } catch (err) {
@@ -372,7 +419,7 @@ export default function MediaSection({
         <p className="text-xs text-white/30">
           {photosOnly
             ? "Imágenes (JPEG, PNG, WebP, HEIC, GIF)"
-            : "Imágenes (JPEG, PNG, WebP, HEIC, GIF) · Vídeos (MP4, WebM, MOV)"}
+            : `Imágenes (JPEG, PNG, WebP, HEIC, GIF) · Vídeos (MP4, WebM, MOV; máx. ${MAX_VIDEO_DURATION_S} s)`}
         </p>
       </div>
 

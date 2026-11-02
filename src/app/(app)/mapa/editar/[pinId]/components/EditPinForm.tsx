@@ -7,27 +7,23 @@ import {
   AlertCircle,
   ArrowLeft,
   Calendar,
-  CheckCircle2,
   Film,
   Loader2,
   MapPin,
   Search,
   Trash2,
-  Upload,
 } from "lucide-react";
 import AuroraField from "@/components/ui/AuroraField";
 import CornerButton from "@/components/ui/CornerButton";
 import { parseCoordinates } from "@/lib/parseCoordinates";
 import { preventEnterSubmit } from "@/lib/preventEnterSubmit";
-import { supabase } from "@/lib/supabase/client";
-import {
-  addMapMediaAction,
-  deleteMapMediaAction,
-  updatePinAction,
-} from "../../../actions";
-import type { MediaItemToInsert, UpdatePinData } from "../../../actions";
+import { videoDisplayState, type VideoDisplay } from "@/lib/media/videoDisplay";
+import { deleteMapMediaAction, updatePinAction } from "../../../actions";
+import type { UpdatePinData } from "../../../actions";
+import { useMediaUploads, type UploadFailure } from "../../../hooks/useMediaUploads";
 import MediaSection from "../../../nueva/components/MediaSection";
 import type { MediaEntry } from "../../../nueva/components/MediaSection";
+import UploadStatusList from "../../../nueva/components/UploadStatusList";
 import type { MapMedia, PinDetail, Sticker } from "@/types/map";
 import type { Country } from "../../../actions";
 
@@ -43,47 +39,25 @@ interface EditPinFormProps {
 
 type SubmitPhase = "form" | "uploading" | "partial_error";
 
-type EntryUploadStatus =
-  | { kind: "idle" }
-  | { kind: "uploading" }
-  | { kind: "ok"; path: string }
-  | { kind: "error"; msg: string };
-
-interface UploadFailure {
-  clientId: string;
-  name: string;
-  msg: string;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const STORAGE_BUCKET =
-  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ?? "solarhub-assets";
-
-function mimeToExt(blob: Blob, originalName: string): string {
-  if (blob.type.includes("webp")) return "webp";
-  if (blob.type.includes("jpeg") || blob.type.includes("jpg")) return "jpg";
-  if (blob.type.includes("png")) return "png";
-  if (blob.type.includes("gif")) return "gif";
-  return originalName.split(".").pop() ?? "bin";
+// Estado de un vídeo de Bunny ya guardado, visto por quien puede editarlo:
+// es aquí donde el autor o staff ve los que han fallado. null si no es de Bunny.
+function bunnyDisplay(m: MapMedia, now: number): VideoDisplay | null {
+  if (m.source !== "bunny-video") return null;
+  return videoDisplayState(
+    { video_status: m.videoStatus, created_at: m.createdAt },
+    { canManage: true, now }
+  );
 }
 
-async function uploadBlob(
-  pinId: number,
-  entry: MediaEntry
-): Promise<{ path: string; mimeType: string; size: number } | { error: string }> {
-  const blob = entry.processedBlob!;
-  const ext = mimeToExt(blob, entry.originalName);
-  const storagePath = `map-media/${pinId}/${crypto.randomUUID()}.${ext}`;
-
-  const { data, error } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(storagePath, blob, { contentType: blob.type, upsert: false });
-
-  if (error) return { error: error.message };
-  return { path: data.path, mimeType: blob.type, size: blob.size };
+function existingMediaLabel(m: MapMedia, display: VideoDisplay | null): string {
+  if (m.type === "PHOTO") return "Foto";
+  if (display === "processing") return "Vídeo · procesando";
+  if (display === "failed") return "Vídeo · no se pudo procesar";
+  return "Vídeo";
 }
 
 // ---------------------------------------------------------------------------
@@ -116,8 +90,10 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
   // Submit state
   const [submitPhase, setSubmitPhase] = useState<SubmitPhase>("form");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadStatuses, setUploadStatuses] = useState<Record<string, EntryUploadStatus>>({});
+  const { statuses: uploadStatuses, runUploadRound } = useMediaUploads();
   const [uploadFailures, setUploadFailures] = useState<UploadFailure[]>([]);
+  // Instante de referencia para saber si una subida de vídeo se abandonó.
+  const [now] = useState(() => Date.now());
 
   const countryWrapperRef = useRef<HTMLDivElement>(null);
 
@@ -212,52 +188,6 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
     setSelectedCountryCode("");
     setShowCountryList(true);
   };
-
-  // ---------------------------------------------------------------------------
-  // Upload round
-  // ---------------------------------------------------------------------------
-
-  const runUploadRound = useCallback(
-    async (pinId: number, entriesToUpload: MediaEntry[]) => {
-      setUploadStatuses((prev) => {
-        const next = { ...prev };
-        for (const e of entriesToUpload) next[e.clientId] = { kind: "uploading" };
-        return next;
-      });
-
-      const settled = await Promise.allSettled(
-        entriesToUpload.map((entry) => uploadBlob(pinId, entry))
-      );
-
-      const toInsert: MediaItemToInsert[] = [];
-      const failures: UploadFailure[] = [];
-
-      for (let i = 0; i < entriesToUpload.length; i++) {
-        const entry = entriesToUpload[i];
-        const result = settled[i];
-
-        if (result.status === "fulfilled" && "path" in result.value) {
-          const { path, mimeType, size } = result.value;
-          toInsert.push({ path, type: entry.mediaType, mimeType, size });
-          setUploadStatuses((prev) => ({ ...prev, [entry.clientId]: { kind: "ok", path } }));
-        } else {
-          const msg =
-            result.status === "rejected"
-              ? String(result.reason)
-              : (result.value as { error: string }).error;
-          failures.push({ clientId: entry.clientId, name: entry.originalName, msg });
-          setUploadStatuses((prev) => ({ ...prev, [entry.clientId]: { kind: "error", msg } }));
-        }
-      }
-
-      if (toInsert.length > 0) {
-        await addMapMediaAction(pinId, toInsert);
-      }
-
-      return failures;
-    },
-    []
-  );
 
   // ---------------------------------------------------------------------------
   // Submit
@@ -368,33 +298,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
                 : "El pin se actualizó pero no se pudo subir ningún archivo, así que sigue sin multimedia. Reinténtalo para completarlo."}
             </p>
           )}
-          <div className="flex flex-col gap-3">
-            {readyEntries.map((entry) => {
-              const status = uploadStatuses[entry.clientId];
-              return (
-                <div
-                  key={entry.clientId}
-                  className="flex items-center gap-3 bg-white/5 rounded-xl px-4 py-3 border border-white/10"
-                >
-                  {!status || status.kind === "idle" ? (
-                    <Upload size={16} className="text-white/30 shrink-0" />
-                  ) : status.kind === "uploading" ? (
-                    <Loader2 size={16} className="text-amber-300 animate-spin shrink-0" />
-                  ) : status.kind === "ok" ? (
-                    <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                  ) : (
-                    <AlertCircle size={16} className="text-red-400 shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white truncate">{entry.originalName}</p>
-                    {status?.kind === "error" && (
-                      <p className="text-xs text-red-400 mt-0.5">{status.msg}</p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <UploadStatusList entries={readyEntries} statuses={uploadStatuses} />
           {submitPhase === "partial_error" && (
             <div className="flex flex-col gap-3 pt-2">
               <CornerButton type="button" onClick={handleRetry} className="self-start">
@@ -591,6 +495,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
             <div className="grid grid-cols-2 gap-3">
               {existingMedia.map((m) => {
                 const isDeleting = deletingMediaId === m.id;
+                const display = bunnyDisplay(m, now);
                 return (
                   <div
                     key={m.id}
@@ -608,7 +513,18 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
                         />
                       ) : (
                         <>
-                          <Film size={28} className="text-white/30" />
+                          {m.source === "bunny-video" && display === "playable" && m.thumbnailUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- miniatura del CDN de Bunny: <img> plano para no gastar la optimización de imágenes de Vercel.
+                            <img
+                              src={m.thumbnailUrl}
+                              alt=""
+                              className="absolute inset-0 w-full h-full object-cover"
+                            />
+                          ) : display === "failed" ? (
+                            <AlertCircle size={28} className="text-red-400/70" />
+                          ) : (
+                            <Film size={28} className="text-white/30" />
+                          )}
                           <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                             <div className="w-0 h-0 border-y-6 border-y-transparent border-l-10 border-l-white/70" />
                           </div>
@@ -620,9 +536,7 @@ export default function EditPinForm({ detail, stickers, countries }: EditPinForm
                         </div>
                       )}
                     </div>
-                    <p className="text-xs text-white/50">
-                      {m.type === "PHOTO" ? "Foto" : "Vídeo"}
-                    </p>
+                    <p className="text-xs text-white/50">{existingMediaLabel(m, display)}</p>
                     <button
                       type="button"
                       onClick={() => handleDeleteExistingMedia(m.id)}
