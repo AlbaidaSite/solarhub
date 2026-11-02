@@ -1,9 +1,10 @@
 // SUT: src/app/(app)/mapa/actions.ts → createPinAction, updatePinAction,
-// deletePinAction, deleteMapMediaAction
+// deletePinAction, deleteMapMediaAction, addMapMediaAction
 // Cubre RF-024 (publicar pin), RF-025 (editar), RF-026 (eliminar), RN-018
-// (autoría) y el mínimo de multimedia obligatorio de un pin.
+// (autoría), el mínimo de multimedia obligatorio de un pin y el borrado de
+// los vídeos alojados en Bunny Stream.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSupabaseStub } from "../fixtures/supabaseMock";
 
 vi.mock("@/lib/supabase/actionAuth", () => ({
@@ -24,6 +25,7 @@ import {
   updatePinAction,
   deletePinAction,
   deleteMapMediaAction,
+  addMapMediaAction,
 } from "@/app/(app)/mapa/actions";
 
 const validData = {
@@ -328,5 +330,207 @@ describe("multimedia obligatorio · borrar un archivo del pin", () => {
     // Ni la fila ni el objeto de storage se tocan.
     expect(deleteCalls).toEqual([]);
     expect(stub.calls.storageRemove).toEqual([]);
+  });
+});
+
+// ─── Vídeos en Bunny Stream ──────────────────────────────────────────────────
+
+const GUID_1 = "11111111-1111-4111-8111-111111111111";
+const GUID_2 = "22222222-2222-4222-8222-222222222222";
+const BUNNY_ENV = {
+  BUNNY_STREAM_LIBRARY_ID: "12345",
+  BUNNY_STREAM_API_KEY: "test-api-key",
+  BUNNY_STREAM_READONLY_API_KEY: "test-readonly-key",
+  BUNNY_STREAM_TOKEN_KEY: "test-token-key",
+  NEXT_PUBLIC_BUNNY_CDN_HOSTNAME: "vz-test.b-cdn.net",
+};
+
+describe("borrado de vídeos alojados en Bunny", () => {
+  let events: string[];
+
+  beforeEach(() => {
+    events = [];
+    for (const [key, value] of Object.entries(BUNNY_ENV)) vi.stubEnv(key, value);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  // Bunny responde por GUID; cada DELETE queda registrado en `events`.
+  function mockBunnyDelete(statusFor: (guid: string) => number) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const guid = url.split("/").pop()!;
+        events.push(`bunny:${init?.method}:${guid}`);
+        return new Response(null, { status: statusFor(guid) });
+      }),
+    );
+  }
+
+  // Pin del usuario con 1 foto y 2 vídeos de Bunny. Registra en `events`
+  // cuándo se borra cada tabla, para comprobar el orden BD → Bunny.
+  function setupPinWithMedia() {
+    const fromImpl = vi.fn((table: string) => {
+      let op = "select";
+      const chain: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "returns"] as const) chain[m] = () => chain;
+      chain.delete = () => {
+        op = "delete";
+        return chain;
+      };
+      chain.maybeSingle = () => chain;
+      chain.then = (onF: (v: unknown) => unknown) => {
+        if (op === "delete") {
+          events.push(`db:delete:${table}`);
+          return Promise.resolve({ data: null, error: null }).then(onF);
+        }
+        if (table === "pin") {
+          return Promise.resolve({ data: { user_id: "u-A" }, error: null }).then(onF);
+        }
+        return Promise.resolve({
+          data: [
+            { path: "map-media/9/foto.webp", bunny_video_id: null },
+            { path: null, bunny_video_id: GUID_1 },
+            { path: null, bunny_video_id: GUID_2 },
+          ],
+          error: null,
+        }).then(onF);
+      };
+      return chain;
+    });
+    const stub = createSupabaseStub({
+      authUserId: "u-A",
+      rpc: { is_staff: { data: false, error: null } },
+    });
+    stub.client.from = fromImpl as never;
+    vi.mocked(requireUserActionClient).mockResolvedValue({
+      ok: true,
+      supabase: stub.client as never,
+      userId: "u-A",
+    });
+    return stub;
+  }
+
+  it("borrar un pin con 2 vídeos de Bunny y 1 foto: 2 DELETE a Bunny después del borrado en BD", async () => {
+    const stub = setupPinWithMedia();
+    mockBunnyDelete(() => 200);
+
+    const result = await deletePinAction(9);
+    expect(result.ok).toBe(true);
+
+    // La foto se sigue borrando de Storage; los vídeos de Bunny no tienen path.
+    expect(stub.calls.storageRemove).toEqual([
+      { bucket: "solarhub-assets", paths: ["map-media/9/foto.webp"] },
+    ]);
+    const pinDeleted = events.indexOf("db:delete:pin");
+    expect(pinDeleted).toBeGreaterThanOrEqual(0);
+    expect(events.slice(pinDeleted + 1)).toEqual([
+      `bunny:DELETE:${GUID_1}`,
+      `bunny:DELETE:${GUID_2}`,
+    ]);
+  });
+
+  it("un fallo de Bunny no hace fallar el borrado del pin", async () => {
+    setupPinWithMedia();
+    mockBunnyDelete((guid) => (guid === GUID_1 ? 503 : 200));
+
+    const result = await deletePinAction(9);
+    expect(result.ok).toBe(true);
+    // Se intenta igualmente el segundo.
+    expect(events).toContain(`bunny:DELETE:${GUID_2}`);
+  });
+
+  it("sin variables de Bunny el pin se borra igual (los vídeos quedan para cleanup.ts)", async () => {
+    for (const key of Object.keys(BUNNY_ENV)) vi.stubEnv(key, "");
+    setupPinWithMedia();
+    mockBunnyDelete(() => 200);
+    expect((await deletePinAction(9)).ok).toBe(true);
+    expect(events.filter((e) => e.startsWith("bunny:"))).toEqual([]);
+  });
+
+  it("borrar un vídeo de Bunny desde la edición: fila primero, después Bunny; nada en Storage", async () => {
+    const tableCalls: string[] = [];
+    const fromImpl = vi.fn((table: string) => {
+      tableCalls.push(table);
+      const mediaCallIdx = tableCalls.filter((t) => t === "map_media").length;
+      let op = "select";
+      const chain: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "returns"] as const) chain[m] = () => chain;
+      chain.delete = () => {
+        op = "delete";
+        return chain;
+      };
+      chain.maybeSingle = () => chain;
+      chain.then = (onF: (v: unknown) => unknown) => {
+        if (op === "delete") {
+          events.push(`db:delete:${table}`);
+          return Promise.resolve({ data: null, error: null }).then(onF);
+        }
+        if (table === "pin") return Promise.resolve({ data: { user_id: "u-A" }, error: null }).then(onF);
+        return Promise.resolve(
+          mediaCallIdx === 1
+            ? { data: { path: null, bunny_video_id: GUID_1 }, error: null }
+            : { data: [{ id: 1 }, { id: 2 }], error: null },
+        ).then(onF);
+      };
+      return chain;
+    });
+    const stub = createSupabaseStub({ authUserId: "u-A", rpc: { is_staff: { data: false, error: null } } });
+    stub.client.from = fromImpl as never;
+    vi.mocked(requireUserActionClient).mockResolvedValue({
+      ok: true,
+      supabase: stub.client as never,
+      userId: "u-A",
+    });
+    mockBunnyDelete(() => 200);
+
+    expect((await deleteMapMediaAction(1, 9)).ok).toBe(true);
+    expect(stub.calls.storageRemove).toEqual([]);
+    expect(events).toEqual(["db:delete:map_media", `bunny:DELETE:${GUID_1}`]);
+  });
+});
+
+describe("addMapMediaAction · solo fotos", () => {
+  it("rechaza VIDEO: los vídeos nuevos van a Bunny por su propio flujo", async () => {
+    const stub = createSupabaseStub({
+      authUserId: "u-A",
+      from: { pin: { data: { user_id: "u-A" }, error: null }, map_media: { data: null, error: null } },
+      rpc: { is_staff: { data: false, error: null } },
+    });
+    vi.mocked(requireUserActionClient).mockResolvedValue({
+      ok: true,
+      supabase: stub.client as never,
+      userId: "u-A",
+    });
+
+    const result = await addMapMediaAction(9, [
+      { path: "map-media/9/v.mp4", type: "VIDEO", mimeType: "video/mp4", size: 1000 },
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("tipo no permitido");
+    expect(stub.calls.from.some((c) => c.table === "map_media")).toBe(false);
+  });
+
+  it("las fotos siguen insertándose", async () => {
+    const stub = createSupabaseStub({
+      authUserId: "u-A",
+      from: { pin: { data: { user_id: "u-A" }, error: null }, map_media: { data: null, error: null } },
+      rpc: { is_staff: { data: false, error: null } },
+    });
+    vi.mocked(requireUserActionClient).mockResolvedValue({
+      ok: true,
+      supabase: stub.client as never,
+      userId: "u-A",
+    });
+
+    const result = await addMapMediaAction(9, [
+      { path: "map-media/9/f.webp", type: "PHOTO", mimeType: "image/webp", size: 1000 },
+    ]);
+    expect(result.ok).toBe(true);
+    const insert = stub.calls.from.find((c) => c.table === "map_media" && c.chain.includes("insert"))!;
+    expect(insert.args[0][0]).toEqual({ pin_id: 9, path: "map-media/9/f.webp", type: "PHOTO" });
   });
 });

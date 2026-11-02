@@ -4,14 +4,17 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUserActionClient } from "@/lib/supabase/actionAuth";
 import { getStorageUrl, STORAGE_BUCKET } from "@/lib/supabase/storage";
-import type { Pin, Sticker, PinDetail, MapMedia } from "@/types/map";
+import { getBunnyConfig } from "@/lib/bunny/config";
+import { deleteVideo } from "@/lib/bunny/api";
+import { buildThumbnailUrl } from "@/lib/bunny/signing";
+import { mediaSource } from "@/lib/media/mediaSource";
+import type { Pin, Sticker, PinDetail, MapMedia, MapMediaRow } from "@/types/map";
+import { canEditPin } from "./lib/pinPermissions";
 
 // Vista que queda desfasada al crear, editar o borrar un pin. La invalida
 // la propia action: si lo hiciera el cliente con router.refresh() junto al
 // router.push(), la navegación se cancelaría (ver CromoEditForm.tsx).
 const MAP_PATH = "/mapa";
-
-type ServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 export interface Country {
   code: string;
@@ -113,9 +116,9 @@ export async function getPinDetailAction(pinId: number): Promise<PinDetail | nul
       .maybeSingle<{ id: number; name: string; icon_path: string }>(),
     supabase
       .from("map_media")
-      .select("id, pin_id, path, type")
+      .select("id, pin_id, path, type, bunny_video_id, video_status, created_at")
       .eq("pin_id", pinId)
-      .returns<Array<{ id: number; pin_id: number; path: string; type: "PHOTO" | "VIDEO" }>>(),
+      .returns<MapMediaRow[]>(),
   ]);
 
   const sticker: Sticker | null = stickerRes.data
@@ -126,12 +129,10 @@ export async function getPinDetailAction(pinId: number): Promise<PinDetail | nul
       }
     : null;
 
-  const media: MapMedia[] = (mediaRes.data ?? []).map((row) => ({
-    id: row.id,
-    pin_id: row.pin_id,
-    url: getStorageUrl(row.path),
-    type: row.type,
-  }));
+  const media: MapMedia[] = (mediaRes.data ?? []).flatMap((row) => {
+    const item = toMapMedia(row);
+    return item ? [item] : [];
+  });
 
   // Ordenar: primero PHOTO, luego VIDEO
   media.sort((a, b) => {
@@ -146,6 +147,57 @@ export async function getPinDetailAction(pinId: number): Promise<PinDetail | nul
     sticker,
     media,
   };
+}
+
+function toMapMedia(row: MapMediaRow): MapMedia | null {
+  let source;
+  try {
+    source = mediaSource(row);
+  } catch (err) {
+    // El CHECK de la tabla lo impide; si aun así llega, se omite la fila
+    // en vez de tumbar el detalle del pin entero.
+    console.error(`map_media ${row.id}:`, err);
+    return null;
+  }
+
+  if (source === "bunny-video") {
+    const cdnHostname = process.env.NEXT_PUBLIC_BUNNY_CDN_HOSTNAME;
+    return {
+      id: row.id,
+      pin_id: row.pin_id,
+      source,
+      type: "VIDEO",
+      videoId: row.bunny_video_id!,
+      videoStatus: row.video_status!,
+      createdAt: row.created_at,
+      thumbnailUrl: cdnHostname ? buildThumbnailUrl(cdnHostname, row.bunny_video_id!) : null,
+    };
+  }
+  if (source === "supabase-video-legacy") {
+    return { id: row.id, pin_id: row.pin_id, source, type: "VIDEO", url: getStorageUrl(row.path!) };
+  }
+  return { id: row.id, pin_id: row.pin_id, source, type: "PHOTO", url: getStorageUrl(row.path!) };
+}
+
+// Borra en Bunny los vídeos de filas que ya se han borrado en BD. La BD es
+// lo autoritativo: si Bunny falla, la action no falla; queda en el log y
+// scripts/bunny/cleanup.ts recoge el vídeo huérfano.
+async function deleteBunnyVideosBestEffort(guids: string[]): Promise<void> {
+  if (guids.length === 0) return;
+  let cfg;
+  try {
+    cfg = getBunnyConfig();
+  } catch (err) {
+    console.error("Bunny sin configurar; vídeos pendientes de limpieza:", guids, err);
+    return;
+  }
+  for (const guid of guids) {
+    try {
+      await deleteVideo(cfg, guid);
+    } catch (err) {
+      console.error(`No se ha podido borrar el vídeo ${guid} de Bunny:`, err);
+    }
+  }
 }
 
 export async function getUsernamesAction(
@@ -206,21 +258,7 @@ function validatePinPayload(data: CreatePinData | UpdatePinData): string | null 
 }
 
 // ─── Auth: ¿puede el usuario actual editar/borrar este pin? ─────────────────
-
-async function canEditPin(supabase: ServerClient, pinId: number, userId: string): Promise<boolean> {
-  const { data: pin } = await supabase
-    .from("pin")
-    .select("user_id")
-    .eq("id", pinId)
-    .maybeSingle<{ user_id: string }>();
-
-  if (!pin) return false;
-  if (pin.user_id === userId) return true;
-
-  // No es el dueño — usamos el RPC SECURITY DEFINER que bypasea RLS de credentials
-  const { data: isStaff } = await supabase.rpc("is_staff");
-  return Boolean(isStaff);
-}
+// La regla (autor o staff) vive en lib/pinPermissions.ts.
 
 export async function checkPinEditPermissionAction(pinId: number): Promise<boolean> {
   const auth = await requireUserActionClient();
@@ -308,10 +346,10 @@ export async function deleteMapMediaAction(
 
   const { data: media } = await supabase
     .from("map_media")
-    .select("path")
+    .select("path, bunny_video_id")
     .eq("id", mediaId)
     .eq("pin_id", pinId)
-    .maybeSingle<{ path: string }>();
+    .maybeSingle<{ path: string | null; bunny_video_id: string | null }>();
 
   if (!media) return { ok: false, error: "Media no encontrada." };
 
@@ -334,10 +372,14 @@ export async function deleteMapMediaAction(
     };
   }
 
-  await supabase.storage.from(STORAGE_BUCKET).remove([media.path]);
+  if (media.path) {
+    await supabase.storage.from(STORAGE_BUCKET).remove([media.path]);
+  }
 
   const { error } = await supabase.from("map_media").delete().eq("id", mediaId);
   if (error) return { ok: false, error: error.message };
+
+  if (media.bunny_video_id) await deleteBunnyVideosBestEffort([media.bunny_video_id]);
   return { ok: true };
 }
 
@@ -349,17 +391,19 @@ export async function deletePinAction(pinId: number): Promise<MapActionResult> {
   const allowed = await canEditPin(supabase, pinId, userId);
   if (!allowed) return { ok: false, error: "Sin permiso para eliminar este pin." };
 
-  // Recolectamos todas las rutas de storage antes de borrar las filas.
+  // Recolectamos las rutas de storage y los vídeos de Bunny antes de borrar
+  // las filas.
   const { data: mediaRows } = await supabase
     .from("map_media")
-    .select("path")
+    .select("path, bunny_video_id")
     .eq("pin_id", pinId)
-    .returns<Array<{ path: string }>>();
+    .returns<Array<{ path: string | null; bunny_video_id: string | null }>>();
 
-  if (mediaRows && mediaRows.length > 0) {
-    await supabase.storage
-      .from(STORAGE_BUCKET)
-      .remove(mediaRows.map((m) => m.path));
+  const storagePaths = (mediaRows ?? []).flatMap((m) => (m.path ? [m.path] : []));
+  const bunnyGuids = (mediaRows ?? []).flatMap((m) => (m.bunny_video_id ? [m.bunny_video_id] : []));
+
+  if (storagePaths.length > 0) {
+    await supabase.storage.from(STORAGE_BUCKET).remove(storagePaths);
   }
 
   await supabase.from("map_media").delete().eq("pin_id", pinId);
@@ -367,12 +411,17 @@ export async function deletePinAction(pinId: number): Promise<MapActionResult> {
   const { error } = await supabase.from("pin").delete().eq("id", pinId);
   if (error) return { ok: false, error: error.message };
 
+  await deleteBunnyVideosBestEffort(bunnyGuids);
+
   revalidatePath(MAP_PATH);
   return { ok: true };
 }
 
 const MAX_MEDIA_SIZE_BYTES = 15 * 1024 * 1024;
-const ALLOWED_MEDIA_TYPES = new Set<MediaItemToInsert["type"]>(["PHOTO", "VIDEO"]);
+// Solo fotos: los vídeos nuevos van directos del navegador a Bunny Stream y
+// su fila la crea createVideoUploadAction (video-actions.ts). Rechazar VIDEO
+// aquí cierra la vía antigua de un vídeo en Supabase Storage.
+const ALLOWED_MEDIA_TYPES = new Set<MediaItemToInsert["type"]>(["PHOTO"]);
 
 export interface MediaItemToInsert {
   path: string;
@@ -399,12 +448,8 @@ export async function addMapMediaAction(
       errors.push(`${item.path}: tipo no permitido (${item.type})`);
       continue;
     }
-    if (item.type === "PHOTO" && !item.mimeType.startsWith("image/")) {
+    if (!item.mimeType.startsWith("image/")) {
       errors.push(`${item.path}: MIME inválido para PHOTO`);
-      continue;
-    }
-    if (item.type === "VIDEO" && !item.mimeType.startsWith("video/")) {
-      errors.push(`${item.path}: MIME inválido para VIDEO`);
       continue;
     }
     if (item.size > MAX_MEDIA_SIZE_BYTES) {

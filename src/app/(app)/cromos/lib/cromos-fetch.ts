@@ -131,6 +131,9 @@ async function fetchUserOwnedUniquesMap(
     });
     map.set(uc.cromo_id, list);
   }
+  // unique_ownership no garantiza orden: sin esto los botones de "Copias"
+  // salían en orden de registro. El usuario los espera numéricos.
+  for (const list of map.values()) list.sort((a, b) => a.copyNumber - b.copyNumber);
   return map;
 }
 

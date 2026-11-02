@@ -4,9 +4,20 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useDialog, FocusScope } from "react-aria";
-import { ExternalLink, Pencil, Trash2, X } from "lucide-react";
-import type { PinDetail } from "@/types/map";
+import { ExternalLink, Film, Pencil, Trash2, X } from "lucide-react";
+import { videoDisplayState, type VideoDisplay } from "@/lib/media/videoDisplay";
+import type { MapMedia, PinDetail } from "@/types/map";
 import { checkPinEditPermissionAction, deletePinAction } from "../actions";
+import BunnyVideo from "./BunnyVideo";
+
+// Imagen que ocupa el sitio del multimedia cuando el pin no tiene ninguno
+// visible: pines antiguos o una subida que falló (se completa editando).
+const NO_MEDIA_IMAGE = "/media/img/logoW.png";
+
+function bunnyDisplay(m: MapMedia, canManage: boolean, now: number): VideoDisplay | null {
+  if (m.source !== "bunny-video") return null;
+  return videoDisplayState({ video_status: m.videoStatus, created_at: m.createdAt }, { canManage, now });
+}
 
 interface PinModalProps {
   detail: PinDetail;
@@ -27,8 +38,10 @@ export default function PinModal({ detail, onClose, onDelete }: PinModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const { dialogProps, titleProps } = useDialog({}, dialogRef);
 
-  const [activeMediaIdx, setActiveMediaIdx] = useState(0);
+  const [activeMediaId, setActiveMediaId] = useState<number | null>(null);
   const [canEdit, setCanEdit] = useState(false);
+  // Instante de referencia para saber si una subida de vídeo se abandonó.
+  const [now] = useState(() => Date.now());
   const [deleteStep, setDeleteStep] = useState<DeleteStep>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -77,7 +90,10 @@ export default function PinModal({ detail, onClose, onDelete }: PinModalProps) {
     });
   };
 
-  const activeMedia = media[activeMediaIdx];
+  // Los vídeos fallidos solo los ve quien puede arreglarlos; para el resto
+  // no existen (ni en el visor ni en el carrusel).
+  const visibleMedia = media.filter((m) => bunnyDisplay(m, canEdit, now) !== "hidden");
+  const activeMedia = visibleMedia.find((m) => m.id === activeMediaId) ?? visibleMedia[0];
   const locationLine = [pin.state, countryName].filter(Boolean).join(", ");
   const mapsUrl = `https://www.google.com/maps/place/${pin.latitude},${pin.longitude}`;
   const dateLabel = new Date(pin.created_at).toLocaleDateString("es-ES", {
@@ -209,12 +225,23 @@ export default function PinModal({ detail, onClose, onDelete }: PinModalProps) {
 
           {/* Media a tamaño intrínseco (limitado por ancho Y alto, lo que
               llegue antes) en vez de forzar un cuadrado: una foto vertical
-              ya no queda con franjas a los lados. La tesela de respaldo con
-              el icono de la pegatina solo aparece en pines antiguos — desde
-              que el multimedia es obligatorio (ver MediaSection.tsx) no se
-              puede crear ninguno sin archivos. */}
+              ya no queda con franjas a los lados. Los vídeos de Bunny van en
+              un reproductor 16:9 (los verticales, con bandas). Sin ningún
+              archivo visible (pines antiguos o una subida fallida que se
+              completará editando) se muestra el logo. */}
           <div className="w-full flex justify-center shrink-0">
-            {activeMedia ? (
+            {activeMedia?.source === "bunny-video" ? (
+              <div className="relative w-full">
+                <BunnyVideo
+                  key={activeMedia.id}
+                  mediaId={activeMedia.id}
+                  thumbnailUrl={activeMedia.thumbnailUrl}
+                  initialDisplay={bunnyDisplay(activeMedia, canEdit, now)!}
+                  title={pin.place}
+                />
+                {editDeleteButtons}
+              </div>
+            ) : activeMedia ? (
               <div className="relative inline-block max-w-full">
                 {activeMedia.type === "PHOTO" ? (
                   // eslint-disable-next-line @next/next/no-img-element -- tamaño intrínseco: next/image "fill" exige un contenedor con tamaño ya fijado, justo lo contrario de lo que hace falta aquí.
@@ -235,21 +262,13 @@ export default function PinModal({ detail, onClose, onDelete }: PinModalProps) {
                 {editDeleteButtons}
               </div>
             ) : (
-              <div className="relative w-full aspect-video bg-zinc-900 rounded-xl overflow-hidden border border-white/10 flex items-center justify-center gap-3">
-                {sticker ? (
-                  <div className="relative h-16 w-16 shrink-0">
-                    <Image
-                      src={sticker.icon_path}
-                      alt=""
-                      fill
-                      sizes="64px"
-                      className="object-contain"
-                      unoptimized
-                    />
-                  </div>
-                ) : (
-                  <span className="text-white/50 text-sm">Sin contenido multimedia</span>
-                )}
+              <div className="relative w-full aspect-video bg-zinc-900 rounded-xl overflow-hidden border border-white/10 flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element -- imagen estática de public/ */}
+                <img
+                  src={NO_MEDIA_IMAGE}
+                  alt="Sin contenido multimedia"
+                  className="max-h-1/2 max-w-1/2 object-contain opacity-80"
+                />
                 {editDeleteButtons}
               </div>
             )}
@@ -257,16 +276,16 @@ export default function PinModal({ detail, onClose, onDelete }: PinModalProps) {
 
           {/* Carrusel de miniaturas: solo con más de un archivo — mismo
               tratamiento visual que el de EventDetailModal.tsx. */}
-          {media.length > 1 && (
+          {visibleMedia.length > 1 && (
             <div className="flex flex-wrap gap-2 scrollbar-clean pb-1">
-              {media.map((m, idx) => (
+              {visibleMedia.map((m, idx) => (
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => setActiveMediaIdx(idx)}
+                  onClick={() => setActiveMediaId(m.id)}
                   aria-label={`Ver ${m.type === "PHOTO" ? "foto" : "vídeo"} ${idx + 1}`}
                   className={`relative shrink-0 w-15 h-10 rounded-lg overflow-hidden border-2 transition-all cursor-pointer bg-zinc-900 ${
-                    idx === activeMediaIdx
+                    m.id === activeMedia?.id
                       ? "border-amber-300"
                       : "border-white/10 hover:border-white/30"
                   }`}
@@ -275,12 +294,23 @@ export default function PinModal({ detail, onClose, onDelete }: PinModalProps) {
                     <Image src={m.url} alt="" fill sizes="80px" className="object-cover" unoptimized />
                   ) : (
                     <>
-                      <video
-                        src={m.url}
-                        className="absolute inset-0 w-full h-full object-cover"
-                        muted
-                        playsInline
-                      />
+                      {m.source === "supabase-video-legacy" ? (
+                        <video
+                          src={m.url}
+                          className="absolute inset-0 w-full h-full object-cover"
+                          muted
+                          playsInline
+                        />
+                      ) : m.thumbnailUrl && m.videoStatus === "READY" ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- miniatura del CDN de Bunny: <img> plano para no gastar la optimización de imágenes de Vercel.
+                        <img
+                          src={m.thumbnailUrl}
+                          alt=""
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Film size={16} className="absolute inset-0 m-auto text-white/40" />
+                      )}
                       <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                         <div className="w-0 h-0 border-y-8 border-y-transparent border-l-12 border-l-white" />
                       </div>

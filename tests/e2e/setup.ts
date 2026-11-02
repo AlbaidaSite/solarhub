@@ -117,6 +117,7 @@ const trackedEventTypes = new Set<number>();
 const trackedPlants = new Set<number>();
 const trackedGardenBeds = new Set<number>();
 const trackedPlantBeds = new Set<number>();
+const trackedPins = new Set<number>();
 
 export async function createTestUser(opts: TestUserOpts = {}): Promise<TestUser> {
   const admin = createAdminClient();
@@ -449,6 +450,54 @@ export async function createTestPlantBed(opts: TestPlantBedOpts): Promise<TestPl
   return { id: data.id as number };
 }
 
+// País y pegatina mínimos para colgar pins de prueba. El país usa un código
+// reservado por ISO para uso privado ("ZZ"), así que no choca con datos reales.
+let mapCatalogReady: { countryCode: string; stickerId: number } | null = null;
+
+async function ensureMapCatalogReady(): Promise<{ countryCode: string; stickerId: number }> {
+  if (mapCatalogReady) return mapCatalogReady;
+  const admin = createAdminClient();
+
+  const { error: cErr } = await admin
+    .from("country")
+    .upsert({ code: "ZZ", name: "País E2E" }, { onConflict: "code" });
+  if (cErr) throw new Error(`upsert country failed: ${cErr.message}`);
+
+  const { data: sticker, error: sErr } = await admin
+    .from("sticker")
+    .insert({ name: `sticker-${SUITE_TAG}`, icon_path: "test/sticker.svg" })
+    .select("id")
+    .single();
+  if (sErr || !sticker) throw new Error(`create sticker failed: ${sErr?.message}`);
+
+  mapCatalogReady = { countryCode: "ZZ", stickerId: sticker.id as number };
+  return mapCatalogReady;
+}
+
+export interface TestPin {
+  id: number;
+}
+
+export async function createTestPin(userId: string): Promise<TestPin> {
+  const { countryCode, stickerId } = await ensureMapCatalogReady();
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("pin")
+    .insert({
+      user_id: userId,
+      sticker_id: stickerId,
+      country_code: countryCode,
+      place: `pin-${SUITE_TAG}`,
+      latitude: 37.4,
+      longitude: -6.0,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`create pin failed: ${error?.message}`);
+  trackedPins.add(data.id as number);
+  return { id: data.id as number };
+}
+
 // ─── Cleanup ─────────────────────────────────────────────────────────────────
 
 afterEach(async () => {
@@ -494,6 +543,12 @@ afterEach(async () => {
     await admin.from("crop_diary").delete().in("plant_id", [...trackedPlants]);
     await admin.from("plant").delete().in("id", [...trackedPlants]);
     trackedPlants.clear();
+  }
+  // pin.user_id REFERENCES profile sin cascade: los pins se van antes que
+  // los usuarios. map_media se va con ellos (ON DELETE CASCADE).
+  if (trackedPins.size > 0) {
+    await admin.from("pin").delete().in("id", [...trackedPins]);
+    trackedPins.clear();
   }
   // Trades (cualquiera donde participen usuarios trackeados) — los
   // borramos antes que los usuarios porque trade.initiator_id REFERENCES profile.

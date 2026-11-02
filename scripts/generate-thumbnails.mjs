@@ -5,9 +5,9 @@
 // cromos/thumb/<mismo-nombre>.
 //
 // Uso:
-//   npm run generate-thumbnails
+//   pnpm generate-thumbnails
 //   (necesita NEXT_PUBLIC_SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY
-//    en .env.development — el script se lanza con node --env-file=.env.development)
+//    en .env.local — el script se lanza con node --env-file=.env.local)
 //
 // Idempotente: si el thumb ya existe, salta esa imagen.
 // =====================================================================
@@ -26,7 +26,7 @@ const THUMB_QUALITY = 75;
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error(
-    "Faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env.development"
+    "Faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env.local"
   );
   process.exit(1);
 }
